@@ -48,7 +48,7 @@ $tags = $repo->getAllTags();
     <a href="tags.php" class="active">Tags</a>
     <a href="settings.php">Réglages</a>
   
-    <a href="logout.php" class="admin-logout">Déconnexion</a>
+    <a href="logout.php" class="admin-logout">D&eacute;connexion</a>
   </nav>
 
   <?php if ($message): ?><p style="color:#2f7a2f;"><?= e($message) ?></p><?php endif; ?>

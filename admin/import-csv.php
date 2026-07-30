@@ -156,7 +156,7 @@ $totalPerfumes = $repo->count();
     <a href="tags.php">Tags</a>
     <a href="settings.php">Réglages</a>
   
-    <a href="logout.php" class="admin-logout">Déconnexion</a>
+    <a href="logout.php" class="admin-logout">D&eacute;connexion</a>
   </nav>
 
   <div class="admin-card">

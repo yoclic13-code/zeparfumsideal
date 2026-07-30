@@ -71,7 +71,7 @@ $tagsText = implode(', ', array_map(fn($t) => $t['name'] . ':' . $t['weight'], $
 <div class="admin-wrap">
   <div class="admin-header">
     <h1>Modifier le parfum</h1>
-    <a href="perfumes.php">← Retour à la liste</a>
+    <a href="perfumes.php">← Retour à la liste</a> <a href="logout.php" class="admin-logout">D&eacute;connexion</a>
   </div>
 
   <?php if ($message): ?><p style="color:#2f7a2f;"><?= e($message) ?></p><?php endif; ?>
