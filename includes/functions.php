@@ -1,0 +1,322 @@
+<?php
+/**
+ * Fonctions utilitaires partagées.
+ */
+
+/**
+ * Échappe une chaîne pour affichage HTML sûr.
+ */
+function e(?string $value): string
+{
+    return htmlspecialchars($value ?? '', ENT_QUOTES, 'UTF-8');
+}
+
+/**
+ * Décode un champ JSON stocké en base, retourne un tableau vide si invalide.
+ */
+function jdecode(?string $json): array
+{
+    if (!$json) {
+        return [];
+    }
+    $data = json_decode($json, true);
+    return is_array($data) ? $data : [];
+}
+
+/**
+ * Encode un tableau en JSON pour stockage.
+ */
+function jencode($data): string
+{
+    return json_encode($data, JSON_UNESCAPED_UNICODE);
+}
+
+/**
+ * Génère un token de session aléatoire.
+ */
+function generateSessionToken(): string
+{
+    return bin2hex(random_bytes(16));
+}
+
+/**
+ * Récupère la première valeur non vide parmi plusieurs clés d'un tableau (tolérance aux noms de champs API différents).
+ */
+function firstNonEmpty(array $arr, array $keys, $default = null)
+{
+    foreach ($keys as $key) {
+        if (isset($arr[$key]) && $arr[$key] !== '' && $arr[$key] !== null) {
+            return $arr[$key];
+        }
+    }
+    return $default;
+}
+
+/**
+ * Nettoie une entrée POST/GET en chaîne simple.
+ */
+function cleanInput(?string $value): string
+{
+    return trim(strip_tags($value ?? ''));
+}
+
+/**
+ * Redirige vers une URL et arrête l'exécution.
+ */
+function redirect(string $url): void
+{
+    header('Location: ' . $url);
+    exit;
+}
+
+/**
+ * Vérifie si l'admin est authentifié.
+ */
+function isAdminLoggedIn(): bool
+{
+    return !empty($_SESSION['is_admin']);
+}
+
+/**
+ * Exige une authentification admin, sinon redirige vers la page de login.
+ */
+function requireAdmin(): void
+{
+    if (!isAdminLoggedIn()) {
+        redirect('index.php');
+    }
+}
+
+/**
+ * Formate un prix pour affichage.
+ */
+function formatPrice($price): string
+{
+    if ($price === null || $price === '') {
+        return '';
+    }
+    return number_format((float)$price, 2, ',', ' ') . ' €';
+}
+
+/**
+ * Construit un lien WhatsApp pré-rempli pour commander un parfum.
+ */
+function whatsappLink(string $perfumeName, string $brand): string
+{
+    $text = rawurlencode("Bonjour, je souhaite commander le parfum \"$perfumeName\" ($brand). Est-il disponible ?");
+    return 'https://wa.me/' . WHATSAPP_NUMBER . '?text=' . $text;
+}
+
+function whatsappButtonEnabled(): bool
+{
+    return getSetting('whatsapp_enabled', WHATSAPP_ENABLED_DEFAULT ? '1' : '0') === '1';
+}
+
+/**
+ * URL d'un asset public avec cache-busting (?v=timestamp de modification).
+ */
+function asset(string $path): string
+{
+    $fullPath = __DIR__ . '/../public/' . ltrim($path, '/');
+    $version = is_file($fullPath) ? filemtime($fullPath) : time();
+
+    return $path . '?v=' . $version;
+}
+
+/**
+ * Lit un réglage du site (table site_settings).
+ */
+function getSetting(string $key, ?string $default = null): string
+{
+    if ($default === null) {
+        $default = '';
+    }
+
+    if (!isset($GLOBALS['_settings_cache'])) {
+        $GLOBALS['_settings_cache'] = [];
+        try {
+            $db = getDb();
+            $stmt = $db->query('SELECT setting_key, setting_value FROM site_settings');
+            foreach ($stmt->fetchAll() as $row) {
+                $GLOBALS['_settings_cache'][$row['setting_key']] = $row['setting_value'];
+            }
+        } catch (Throwable $e) {
+            // Table absente ou base indisponible : fallback sur les constantes.
+        }
+    }
+
+    return $GLOBALS['_settings_cache'][$key] ?? $default;
+}
+
+/**
+ * Enregistre un réglage du site.
+ */
+function setSetting(string $key, string $value): void
+{
+    $db = getDb();
+    $stmt = $db->prepare(
+        'INSERT INTO site_settings (setting_key, setting_value) VALUES (:key, :value)
+         ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)'
+    );
+    $stmt->execute(['key' => $key, 'value' => $value]);
+
+    if (!isset($GLOBALS['_settings_cache'])) {
+        $GLOBALS['_settings_cache'] = [];
+    }
+    $GLOBALS['_settings_cache'][$key] = $value;
+}
+
+/**
+ * Opacité du voile noir sur la vidéo d'accueil (0 à 1).
+ */
+function heroOverlayOpacity(): float
+{
+    $value = getSetting('hero_overlay_opacity', (string)HERO_OVERLAY_OPACITY_DEFAULT);
+
+    return max(0.0, min(1.0, (float)$value));
+}
+
+/**
+ * Liste des vidéos disponibles pour le hero.
+ */
+function heroVideoOptions(): array
+{
+    $videoDir = __DIR__ . '/../public/assets/video';
+    $patterns = ['*.mp4', '*.webm', '*.ogg'];
+    $files = [];
+
+    foreach ($patterns as $pattern) {
+        foreach (glob($videoDir . '/' . $pattern) ?: [] as $fullPath) {
+            if (is_file($fullPath)) {
+                $files[] = basename($fullPath);
+            }
+        }
+    }
+
+    $files = array_values(array_unique($files));
+    sort($files, SORT_NATURAL | SORT_FLAG_CASE);
+
+    return $files;
+}
+
+/**
+ * Nom du fichier vidéo sélectionné pour le hero.
+ */
+function heroVideoFilename(): string
+{
+    $default = defined('HERO_VIDEO_DEFAULT') ? HERO_VIDEO_DEFAULT : 'hero-background.mp4';
+    $selected = basename(getSetting('hero_video_file', $default));
+    $available = heroVideoOptions();
+
+    if (in_array($selected, $available, true)) {
+        return $selected;
+    }
+
+    if (in_array($default, $available, true)) {
+        return $default;
+    }
+
+    return $available[0] ?? $default;
+}
+
+/**
+ * Le bandeau/prix parrainage est-il activé ? Réglable dans /admin/settings.php.
+ */
+function referralEnabled(): bool
+{
+    return getSetting('referral_enabled', REFERRAL_ENABLED_DEFAULT ? '1' : '0') === '1';
+}
+
+/**
+ * Pourcentage de réduction affiché quand le parrainage est activé.
+ */
+function referralDiscountAmount(): float
+{
+    $value = getSetting('referral_discount', (string)REFERRAL_DISCOUNT_DEFAULT);
+
+    return max(0.0, min(100.0, (float)$value));
+}
+
+/**
+ * Prix estimé après réduction parrainage en % (plancher à 0).
+ */
+function referralDiscountedPrice(?float $price): ?float
+{
+    if ($price === null || $price === '') {
+        return null;
+    }
+
+    $percent = referralDiscountAmount();
+    return max(0.0, (float)$price * (1 - $percent / 100));
+}
+
+/**
+ * Bloc HTML du prix catalogue + estimation parrainage (si activé).
+ */
+function renderPerfumePriceBlock($price): string
+{
+    if ($price === null || $price === '') {
+        return '';
+    }
+
+    $catalogPrice = (float)$price;
+    $html = '<div class="result-price">';
+
+    if (referralEnabled()) {
+        $discount = referralDiscountAmount();
+        $estimated = referralDiscountedPrice($catalogPrice);
+
+        $html .= '<p class="result-price-label">Prix catalogue</p>';
+        $html .= '<p class="result-price-original">' . e(formatPrice($catalogPrice)) . '</p>';
+        $html .= '<p class="result-price-label-referral">Parrain / Filleul <span class="result-price-badge-large">-' . (int)$discount . '%</span>'
+              . ' <span class="referral-info-trigger" tabindex="0" aria-label="Conditions de parrainage">Voir conditions</span></p>';
+        $html .= '<div class="referral-info-bubble">'
+              . '<p><strong>Conditions de parrainage :</strong></p>'
+              . '<ul>'
+              . '<li>Votre filleul obtient <strong>-' . (int)$discount . '%</strong> sur sa 1<sup>re</sup> commande <strong>(dès 50 € d\'achat)</strong>.</li>'
+              . '<li>Vous profitez de <strong>-' . (int)$discount . '% pour chaque filleul ayant passé commande</strong>.</li>'
+              . '</ul>'
+              . '<p class="referral-info-note">Offre non cumulable, sur présentation du code parrainage.</p>'
+              . '</div>';
+        $html .= '<p class="result-price-estimate-referral">' . e(formatPrice($estimated)) . '</p>';
+    } else {
+        $html .= '<p class="result-price-label">Avec Promo Ze Parfums</p>';
+        $html .= '<p class="result-price-estimate">' . e(formatPrice($catalogPrice)) . '</p>';
+    }
+
+    $html .= '</div>';
+
+    return $html;
+}
+
+/**
+ * Bandeau promotionnel parrainage sous les résultats.
+ */
+function renderReferralBanner(): string
+{
+    if (!referralEnabled()) {
+        return '';
+    }
+
+    $discount = (int)referralDiscountAmount();
+
+    return '<aside class="referral-banner" role="note">'
+        . '<p class="referral-banner-title">Offre parrainage Ze Parfums</p>'
+        . '<p class="referral-banner-text">Demandez votre code de parrainage, disponible dans la rubrique <strong>« Mon Profil »</strong>, '
+        . 'et obtenez <strong>-' . $discount . '% de réduction</strong> pour le parrain et le filleul dès la 1<sup>re</sup> commande.</p>'
+        . '</aside>';
+}
+
+/**
+ * Image de remplacement encodée en data-URI (aucune dépendance réseau/fichier).
+ * Utilisée en attribut onerror des <img> pour ne jamais afficher d'image cassée.
+ */
+function placeholderDataUri(): string
+{
+    $svg = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="500" viewBox="0 0 400 500">'
+         . '<rect width="400" height="500" fill="rgb(239,231,218)"/>'
+         . '<text x="50%" y="50%" font-family="Georgia, serif" font-size="60" fill="rgb(184,149,91)" '
+         . 'text-anchor="middle" dominant-baseline="middle">&#10022;</text></svg>';
+
+    return 'data:image/svg+xml;utf8,' . rawurlencode($svg);
+}

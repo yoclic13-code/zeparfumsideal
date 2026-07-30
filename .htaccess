@@ -1,0 +1,6 @@
+# Empêche l'accès direct aux dossiers sensibles depuis la racine.
+Options -Indexes
+
+<FilesMatch "\.(sql|md)$">
+  Require all denied
+</FilesMatch>
