@@ -1,14 +1,22 @@
 <?php
 /**
  * Connexion PDO sécurisée à la base MySQL.
- * Modifiez ces constantes selon votre environnement (WAMP/phpMyAdmin).
+ *
+ * Valeurs par défaut = environnement local (WAMP).
+ * En production (o2switch), créez config/database.local.php (non versionné) :
+ * copiez database.local.example.php et renseignez vos identifiants.
  */
 
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'trouvezeparfums');
-define('DB_USER', 'root');
-define('DB_PASS', '');
-define('DB_CHARSET', 'utf8mb4');
+$localConfig = __DIR__ . '/database.local.php';
+if (is_file($localConfig)) {
+    require $localConfig;
+} else {
+    define('DB_HOST', 'localhost');
+    define('DB_NAME', 'trouvezeparfums');
+    define('DB_USER', 'root');
+    define('DB_PASS', '');
+    define('DB_CHARSET', 'utf8mb4');
+}
 
 /**
  * Retourne une instance PDO partagée (singleton).
@@ -29,7 +37,7 @@ function getDb(): PDO
             $pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
         } catch (PDOException $e) {
             http_response_code(500);
-            die('Erreur de connexion à la base de données. Vérifiez config/database.php.');
+            die('Erreur de connexion à la base de données. Vérifiez config/database.local.php (prod) ou config/database.php (local).');
         }
     }
 
