@@ -36,14 +36,14 @@ $opacityPercent = (int)round($opacity * 100);
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Réglages — Administration</title>
-<link rel="stylesheet" href="../public/assets/css/style.css">
+<link rel="stylesheet" href="<?= e(rtrim(SITE_URL, '/')) ?>/assets/css/style.css">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&family=Jost:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body class="admin-body">
 <div class="admin-wrap">
   <div class="admin-header">
     <h1>Réglages du site</h1>
-    <a href="../public/index.php" target="_blank">Voir la page d'accueil ↗</a>
+    <a href="<?= e(rtrim(SITE_URL, '/')) ?>" target="_blank">Voir la page d'accueil ↗</a>
   </div>
   <nav class="admin-nav">
     <a href="perfumes.php">Parfums</a>

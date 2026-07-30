@@ -21,6 +21,17 @@ define('FREEPIK_API_KEY', 'MSd8a497ed0c92411b8f7043ceca44243e');
 // Nom du site
 define('SITE_NAME', 'Trouvez Votre Parfum');
 
+// Surcharges production (SITE_URL, etc.) — fichier non versionné
+$appLocal = __DIR__ . '/app.local.php';
+if (is_file($appLocal)) {
+    require $appLocal;
+}
+
+// URL publique du site (assets CSS admin, liens)
+if (!defined('SITE_URL')) {
+    define('SITE_URL', 'http://localhost/TROUVEZEPARFUMS/public');
+}
+
 // Opacité par défaut du voile noir sur la vidéo d'accueil (0 à 1)
 define('HERO_OVERLAY_OPACITY_DEFAULT', 0.55);
 define('HERO_VIDEO_DEFAULT', 'hero-background.mp4');

@@ -1,5 +1,6 @@
 # Config locale (prod) — ne jamais versionner
 config/database.local.php
+config/app.local.php
 
 # OS / IDE
 .DS_Store

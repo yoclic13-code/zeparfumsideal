@@ -27,7 +27,7 @@ $totalPages = max(1, (int)ceil($data['total'] / 20));
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Parfums — Administration</title>
-<link rel="stylesheet" href="../public/assets/css/style.css">
+<link rel="stylesheet" href="<?= e(rtrim(SITE_URL, '/')) ?>/assets/css/style.css">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&family=Jost:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body class="admin-body">
