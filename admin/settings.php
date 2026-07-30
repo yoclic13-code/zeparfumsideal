@@ -51,6 +51,8 @@ $opacityPercent = (int)round($opacity * 100);
     <a href="import-csv.php">Import CSV</a>
     <a href="tags.php">Tags</a>
     <a href="settings.php" class="active">Réglages</a>
+  
+    <a href="logout.php" class="admin-logout">Déconnexion</a>
   </nav>
 
   <?php if ($message): ?><p style="color:#2f7a2f;"><?= e($message) ?></p><?php endif; ?>

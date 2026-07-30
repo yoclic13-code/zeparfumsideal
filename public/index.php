@@ -18,7 +18,15 @@ require_once __DIR__ . '/../includes/header.php';
 
 <main class="home-screen home-screen--typewriter">
   <header class="home-topbar" aria-label="En-tete Ze Parfums">
-    <img src="assets/img/logo-zeparfums.png" alt="ZE Parfums" class="home-topbar-logo">
+    <img
+      src="assets/img/logo-zeparfums.png"
+      alt="ZE Parfums"
+      class="home-topbar-logo"
+      width="141"
+      height="100"
+      decoding="async"
+      fetchpriority="high"
+    >
     <a href="https://zeparfums.com" target="_blank" rel="noopener" class="home-topbar-link">Revenir sur le site</a>
   </header>
 

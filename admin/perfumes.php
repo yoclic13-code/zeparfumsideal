@@ -42,6 +42,8 @@ $totalPages = max(1, (int)ceil($data['total'] / 20));
     <a href="import-csv.php">Import CSV</a>
     <a href="tags.php">Tags</a>
     <a href="settings.php">Réglages</a>
+  
+    <a href="logout.php" class="admin-logout">Déconnexion</a>
   </nav>
 
   <div class="admin-card">

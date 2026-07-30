@@ -47,6 +47,8 @@ $tags = $repo->getAllTags();
     <a href="import-csv.php">Import CSV</a>
     <a href="tags.php" class="active">Tags</a>
     <a href="settings.php">Réglages</a>
+  
+    <a href="logout.php" class="admin-logout">Déconnexion</a>
   </nav>
 
   <?php if ($message): ?><p style="color:#2f7a2f;"><?= e($message) ?></p><?php endif; ?>
