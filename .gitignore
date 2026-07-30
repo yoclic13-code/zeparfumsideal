@@ -2,6 +2,9 @@
 config/database.local.php
 config/app.local.php
 
+# Exports SQL locaux
+exports/
+
 # OS / IDE
 .DS_Store
 Thumbs.db

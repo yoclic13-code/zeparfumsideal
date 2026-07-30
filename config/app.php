@@ -27,9 +27,14 @@ if (is_file($appLocal)) {
     require $appLocal;
 }
 
-// URL publique du site (assets CSS admin, liens)
+// URL publique du site (liens admin → site)
 if (!defined('SITE_URL')) {
-    define('SITE_URL', 'http://localhost/TROUVEZEPARFUMS/public');
+    $host = strtolower((string)($_SERVER['HTTP_HOST'] ?? ''));
+    if ($host !== '' && str_contains($host, 'zeparfumsideal.com')) {
+        define('SITE_URL', 'https://zeparfumsideal.com');
+    } else {
+        define('SITE_URL', 'http://localhost/TROUVEZEPARFUMS/public');
+    }
 }
 
 // Opacité par défaut du voile noir sur la vidéo d'accueil (0 à 1)

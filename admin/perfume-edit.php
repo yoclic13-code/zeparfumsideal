@@ -64,7 +64,7 @@ $tagsText = implode(', ', array_map(fn($t) => $t['name'] . ':' . $t['weight'], $
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Modifier <?= e($perfume['name']) ?> — Administration</title>
-<link rel="stylesheet" href="<?= e(rtrim(SITE_URL, '/')) ?>/assets/css/style.css">
+<link rel="stylesheet" href="assets/css/style.css">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&family=Jost:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body class="admin-body">
