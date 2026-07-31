@@ -1,13 +1,14 @@
 <?php
 /**
- * Sync catalogue depuis zeparfums.com via scrape Python.
- * Auth principale = cookie de session navigateur (compte CSE déjà connecté).
+ * Sync catalogue depuis zeparfums.com via scrape PHP (cookie session CSE).
+ * Aucun Python / pip requis (compatible o2switch).
  */
 require_once __DIR__ . '/../config/app.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../classes/PerfumeRepository.php';
 require_once __DIR__ . '/../classes/CatalogSyncService.php';
+require_once __DIR__ . '/../classes/ZeparfumsScraper.php';
 
 requireAdmin();
 
@@ -73,60 +74,14 @@ try {
 
 function runZeparfumsScrapeSync(string $cookie, string $categories): array
 {
-    $pythonCmd = findPythonCommand();
-    $script = realpath(__DIR__ . '/../scripts/scrape_zeparfums.py');
-    if ($script === false) {
-        throw new RuntimeException('Script scripts/scrape_zeparfums.py introuvable.');
-    }
-
-    $env = buildProcessEnv();
-    $env['ZEPARFUMS_COOKIE'] = $cookie;
-    $env['ZEPARFUMS_BASE_URL'] = 'https://zeparfums.com';
-    // Ne pas réutiliser d'anciens identifiants par erreur
-    unset($env['ZEPARFUMS_EMAIL'], $env['ZEPARFUMS_PASSWORD']);
-
+    $catList = [];
     if ($categories !== '') {
         $parts = preg_split('/[\r\n|]+/', $categories) ?: [];
-        $parts = array_values(array_filter(array_map('trim', $parts)));
-        $env['ZEPARFUMS_CATEGORIES'] = implode('|', $parts);
+        $catList = array_values(array_filter(array_map('trim', $parts)));
     }
 
-    $cmd = $pythonCmd . ' ' . escapeshellarg($script);
-    $descriptors = [
-        0 => ['pipe', 'r'],
-        1 => ['pipe', 'w'],
-        2 => ['pipe', 'w'],
-    ];
-
-    $process = proc_open($cmd, $descriptors, $pipes, dirname($script), $env);
-    if (!is_resource($process)) {
-        throw new RuntimeException('Impossible de démarrer Python. Vérifiez que Python est installé.');
-    }
-
-    fclose($pipes[0]);
-    $stdout = stream_get_contents($pipes[1]);
-    $stderr = stream_get_contents($pipes[2]);
-    fclose($pipes[1]);
-    fclose($pipes[2]);
-    proc_close($process);
-
-    $stdout = trim((string)$stdout);
-    if ($stdout === '') {
-        $hint = trim((string)$stderr);
-        throw new RuntimeException(
-            'Le scraper n’a renvoyé aucun résultat.'
-            . ($hint !== '' ? ' Détail : ' . $hint : '')
-        );
-    }
-
-    $data = json_decode($stdout, true);
-    if (!is_array($data)) {
-        throw new RuntimeException('Réponse JSON invalide du scraper.');
-    }
-    if (empty($data['ok'])) {
-        throw new RuntimeException((string)($data['error'] ?? 'Échec du scrape.'));
-    }
-
+    $scraper = new ZeparfumsScraper($cookie);
+    $data = $scraper->scrape($catList);
     $products = $data['products'] ?? [];
     if (!is_array($products) || $products === []) {
         throw new RuntimeException('Aucun produit à importer.');
@@ -163,47 +118,9 @@ function runZeparfumsScrapeSync(string $cookie, string $categories): array
         'updated' => $updated,
         'errors' => $errors,
         'categories' => $data['categories'] ?? [],
-        'auth' => $data['auth'] ?? 'cookie',
-        'stderr' => trim((string)$stderr),
+        'auth' => 'cookie',
+        'engine' => 'php',
     ];
-}
-
-function buildProcessEnv(): array
-{
-    $env = [];
-    foreach ([$_ENV, $_SERVER, getenv() ?: []] as $source) {
-        if (!is_array($source)) {
-            continue;
-        }
-        foreach ($source as $k => $v) {
-            if (is_string($k) && is_string($v) && !array_key_exists($k, $env)) {
-                $env[$k] = $v;
-            }
-        }
-    }
-    return $env;
-}
-
-function findPythonCommand(): string
-{
-    $candidates = [];
-    if (defined('PYTHON_BINARY') && PYTHON_BINARY !== '') {
-        $candidates[] = PYTHON_BINARY;
-    }
-    $candidates = array_merge($candidates, ['py -3', 'python', 'python3']);
-
-    foreach ($candidates as $bin) {
-        $out = [];
-        $code = 0;
-        @exec($bin . ' -c "print(1)" 2>&1', $out, $code);
-        if ($code === 0) {
-            return $bin;
-        }
-    }
-
-    throw new RuntimeException(
-        'Python 3 introuvable. Installez Python puis : pip install -r scripts/requirements-scrape.txt'
-    );
 }
 
 $cookieMasked = $cookie !== ''
@@ -254,7 +171,7 @@ $cookieMasked = $cookie !== ''
     <p style="color:var(--gray);font-size:0.9rem;">
       Connectez-vous sur <a href="https://zeparfums.com" target="_blank" rel="noopener">zeparfums.com</a>,
       puis collez ici le cookie de votre navigateur. Le scraper réutilise <strong>votre session déjà ouverte</strong>
-      (pas besoin du mot de passe, pas d’accès PrestaShop).
+      (PHP pur — pas besoin de Python ni d’accès PrestaShop).
     </p>
 
     <ol style="color:var(--gray);line-height:1.7;padding-left:1.2rem;font-size:0.9rem;">
@@ -303,9 +220,9 @@ $cookieMasked = $cookie !== ''
   <div class="admin-card">
     <h2 style="margin-top:0;font-family:Cormorant Garamond,serif;">Important</h2>
     <ul style="color:var(--gray);line-height:1.7;">
+      <li>Fonctionne sur o2switch sans <code>pip</code> / Python.</li>
       <li>Le cookie donne accès à votre session CSE : ne le partagez pas.</li>
       <li>Après sync, lancez <a href="import.php">Import API → enrichissement</a> pour les notes / quiz.</li>
-      <li>Dépendances : <code>pip install -r scripts/requirements-scrape.txt</code></li>
     </ul>
   </div>
 </div>
