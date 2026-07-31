@@ -49,6 +49,7 @@ $opacityPercent = (int)round($opacity * 100);
     <a href="perfumes.php">Parfums</a>
     <a href="import.php">Import API</a>
     <a href="import-csv.php">Import CSV</a>
+    <a href="sync.php">Sync ZeParfums</a>
     <a href="tags.php">Tags</a>
     <a href="settings.php" class="active">Réglages</a>
   

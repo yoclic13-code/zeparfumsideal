@@ -5,6 +5,10 @@ config/app.local.php
 # Exports SQL locaux
 exports/
 
+# Python
+scripts/__pycache__/
+*.pyc
+
 # OS / IDE
 .DS_Store
 Thumbs.db

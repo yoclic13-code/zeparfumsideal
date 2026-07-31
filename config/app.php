@@ -37,6 +37,12 @@ if (!defined('SITE_URL')) {
     }
 }
 
+// Clé Bearer pour le webhook PrestaShop → /public/api/catalog-sync.php
+// À définir dans config/app.local.php (ne jamais committer la vraie clé).
+if (!defined('CATALOG_SYNC_API_KEY')) {
+    define('CATALOG_SYNC_API_KEY', '');
+}
+
 // Opacité par défaut du voile noir sur la vidéo d'accueil (0 à 1)
 define('HERO_OVERLAY_OPACITY_DEFAULT', 0.55);
 define('HERO_VIDEO_DEFAULT', 'hero-background.mp4');

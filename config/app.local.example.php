@@ -5,3 +5,6 @@
  */
 
 define('SITE_URL', 'https://zeparfumsideal.com');
+
+// Clé secrète partagée avec le module PrestaShop (tzpcatalogsync)
+define('CATALOG_SYNC_API_KEY', 'changez-moi-par-une-cle-longue-aleatoire');

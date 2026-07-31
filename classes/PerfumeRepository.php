@@ -101,6 +101,69 @@ class PerfumeRepository
         return $row ?: null;
     }
 
+    public function findByProductUrl(string $productUrl): ?array
+    {
+        $stmt = $this->db->prepare("SELECT * FROM perfumes WHERE product_url = :url LIMIT 1");
+        $stmt->execute(['url' => $productUrl]);
+        $row = $stmt->fetch();
+        return $row ?: null;
+    }
+
+    /**
+     * Trouve un parfum dont product_url commence par le chemin donné
+     * (ignore les fragments PrestaShop #/49,contenance,...).
+     */
+    public function findByProductUrlPrefix(string $urlPrefix): ?array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT * FROM perfumes
+             WHERE product_url = :exact OR product_url LIKE :prefix
+             ORDER BY (product_url = :exact2) DESC
+             LIMIT 1"
+        );
+        $stmt->execute([
+            'exact'  => $urlPrefix,
+            'exact2' => $urlPrefix,
+            'prefix' => $urlPrefix . '#%',
+        ]);
+        $row = $stmt->fetch();
+        return $row ?: null;
+    }
+
+    /**
+     * Met à jour uniquement les champs boutique (prix, image, lien, actif…)
+     * sans écraser les notes olfactives déjà enrichies.
+     */
+    public function updateShopFields(int $id, array $data): void
+    {
+        $stmt = $this->db->prepare(
+            "UPDATE perfumes SET
+                name = :name, brand = :brand, gender = :gender,
+                image_url = :image_url, price = :price, product_url = :product_url,
+                is_active = :is_active, updated_at = NOW()
+             WHERE id = :id"
+        );
+        $stmt->execute([
+            'id'          => $id,
+            'name'        => $data['name'],
+            'brand'       => $data['brand'] ?? null,
+            'gender'      => $data['gender'] ?? 'mixte',
+            'image_url'   => $data['image_url'] ?? null,
+            'price'       => $data['price'] ?? null,
+            'product_url' => $data['product_url'] ?? null,
+            'is_active'   => $data['is_active'] ?? 1,
+        ]);
+    }
+
+    public function setActiveByApiId(string $apiId, bool $active): bool
+    {
+        $stmt = $this->db->prepare(
+            "UPDATE perfumes SET is_active = :active, updated_at = NOW() WHERE api_id = :api_id"
+        );
+        $stmt->execute(['active' => $active ? 1 : 0, 'api_id' => $apiId]);
+        return $stmt->rowCount() > 0;
+    }
+
     /**
      * Insère ou met à jour un parfum (par api_id) via ON DUPLICATE KEY UPDATE.
      */
@@ -122,7 +185,8 @@ class PerfumeRepository
                  longevity = VALUES(longevity), sillage = VALUES(sillage),
                  image_url = VALUES(image_url), source_url = VALUES(source_url),
                  description = VALUES(description), price = VALUES(price),
-                 product_url = VALUES(product_url), updated_at = NOW()";
+                 product_url = VALUES(product_url), is_active = VALUES(is_active),
+                 updated_at = NOW()";
 
         $stmt = $this->db->prepare($sql);
         $stmt->execute([

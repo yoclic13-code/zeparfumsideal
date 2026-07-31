@@ -40,6 +40,7 @@ $totalPages = max(1, (int)ceil($data['total'] / 20));
     <a href="perfumes.php" class="active">Parfums</a>
     <a href="import.php">Import API</a>
     <a href="import-csv.php">Import CSV</a>
+    <a href="sync.php">Sync ZeParfums</a>
     <a href="tags.php">Tags</a>
     <a href="settings.php">Réglages</a>
   

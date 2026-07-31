@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<module>
+  <name>tzpcatalogsync</name>
+  <displayName><![CDATA[TZP Catalogue Sync]]></displayName>
+  <version><![CDATA[1.0.0]]></version>
+  <description><![CDATA[Synchronise les produits PrestaShop vers Trouvez Votre Parfum en temps réel.]]></description>
+  <author><![CDATA[ZeParfums]]></author>
+  <tab><![CDATA[administration]]></tab>
+  <is_configurable>1</is_configurable>
+  <need_instance>0</need_instance>
+</module>

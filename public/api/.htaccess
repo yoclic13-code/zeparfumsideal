@@ -1,0 +1,9 @@
+# Empêche le listing du dossier api
+Options -Indexes
+
+# Transmet le header Authorization (souvent retiré par Apache)
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{HTTP:Authorization} .
+  RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+</IfModule>
