@@ -104,7 +104,7 @@ class QuizEngine
     /**
      * Recommandation à partir des réponses du quiz classique.
      */
-    public function recommendFromQuiz(array $answers, int $limit = 3, bool $coffretsOnly = false): array
+    public function recommendFromQuiz(array $answers, int $limit = 3, bool $coffretsOnly = false, ?float $maxPrice = null): array
     {
         $wantedTags = $this->getTagsFromAnswers($answers);
 
@@ -119,7 +119,7 @@ class QuizEngine
         $allowCoffrets = in_array('cadeau', $answers, true);
         $coffretsOnly = $allowCoffrets && $coffretsOnly;
 
-        return $this->rankPerfumes($wantedTags, $limit, null, $requiredGender, $allowCoffrets, $coffretsOnly);
+        return $this->rankPerfumes($wantedTags, $limit, null, $requiredGender, $allowCoffrets, $coffretsOnly, $maxPrice);
     }
 
     /**
@@ -232,13 +232,14 @@ class QuizEngine
     /**
      * Signature stable d'une requête pour une rotation déterministe.
      */
-    private function requestSignature(array $wantedTags, ?int $excludePerfumeId, ?string $requiredGender): string
+    private function requestSignature(array $wantedTags, ?int $excludePerfumeId, ?string $requiredGender, ?float $maxPrice = null): string
     {
         ksort($wantedTags);
         return json_encode([
             'tags' => $wantedTags,
             'exclude' => $excludePerfumeId,
             'gender' => $requiredGender,
+            'max_price' => $maxPrice,
         ], JSON_UNESCAPED_UNICODE) ?: 'default';
     }
 
@@ -331,7 +332,8 @@ class QuizEngine
         ?int $excludePerfumeId = null,
         ?string $requiredGender = null,
         bool $allowCoffrets = false,
-        bool $coffretsOnly = false
+        bool $coffretsOnly = false,
+        ?float $maxPrice = null
     ): array {
         $perfumes = $this->repo->getAllActiveWithTags();
         $ranked = [];
@@ -355,6 +357,10 @@ class QuizEngine
             }
 
             if (!$this->isGenderCompatible($perfume['gender'] ?? null, $requiredGender)) {
+                continue;
+            }
+
+            if (!$this->isPriceCompatible($perfume['price'] ?? null, $maxPrice)) {
                 continue;
             }
 
@@ -407,10 +413,10 @@ class QuizEngine
                 fn($entry) => !$this->isCoffret($entry['perfume'])
             ));
             $merged = array_merge($coffretRanked, $regularRanked);
-            $signature = $this->requestSignature($wantedTags, $excludePerfumeId, $requiredGender) . '|coffret-mix';
+            $signature = $this->requestSignature($wantedTags, $excludePerfumeId, $requiredGender, $maxPrice) . '|coffret-mix';
             $top = $this->selectDiversifiedTop($merged, $limit, $signature);
         } else {
-            $signature = $this->requestSignature($wantedTags, $excludePerfumeId, $requiredGender);
+            $signature = $this->requestSignature($wantedTags, $excludePerfumeId, $requiredGender, $maxPrice);
             $top = $this->selectDiversifiedTop($ranked, $limit, $signature);
         }
         $maxScore = $top[0]['score'] ?? 1;
@@ -431,6 +437,23 @@ class QuizEngine
         $this->rememberResultIds(array_map(fn($r) => (int)$r['perfume']['id'], $results));
 
         return $results;
+    }
+
+    /**
+     * Filtre budget : si un plafond est défini, seuls les parfums avec un prix
+     * connu et inférieur ou égal à ce plafond sont retenus.
+     */
+    private function isPriceCompatible($price, ?float $maxPrice): bool
+    {
+        if ($maxPrice === null || $maxPrice <= 0) {
+            return true;
+        }
+
+        if ($price === null || $price === '') {
+            return false;
+        }
+
+        return (float)$price <= $maxPrice;
     }
 
     /**

@@ -28,6 +28,16 @@ $questions = [
         ],
     ],
     [
+        'key' => 'budget',
+        'type' => 'slider',
+        'question' => 'Quel budget souhaitez-vous consacrer ?',
+        'options' => [
+            ['value' => '40', 'label' => 'Max 40 €'],
+            ['value' => '100', 'label' => 'Max 100 €'],
+            ['value' => '0', 'label' => 'Pas de limite'],
+        ],
+    ],
+    [
         'key' => 'family',
         'question' => 'Quelles familles olfactives correspondent le mieux à vos préférences ?',
         'multi' => true,

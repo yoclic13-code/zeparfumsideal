@@ -30,7 +30,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $answers = json_decode($answersRaw, true);
         $answers = is_array($answers) ? array_map('strval', $answers) : [];
         $coffretsOnly = ($_POST['coffrets_only'] ?? '0') === '1';
-        $results = $engine->recommendFromQuiz($answers, 3, $coffretsOnly);
+        $maxPriceRaw = $_POST['max_price'] ?? '';
+        $maxPrice = null;
+        if ($maxPriceRaw !== '' && is_numeric($maxPriceRaw) && (float)$maxPriceRaw > 0) {
+            $maxPrice = (float)$maxPriceRaw;
+        }
+        $results = $engine->recommendFromQuiz($answers, 3, $coffretsOnly, $maxPrice);
     }
 
     // Sauvegarde de la session en base

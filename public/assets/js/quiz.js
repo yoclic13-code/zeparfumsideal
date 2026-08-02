@@ -41,6 +41,12 @@
       h2.textContent = q.question;
       step.appendChild(h2);
 
+      if (q.type === 'slider') {
+        renderBudgetSlider(step, q, i);
+        container.appendChild(step);
+        return;
+      }
+
       var hasImages = q.options.some(function (opt) { return !!opt.image; });
 
       var grid = document.createElement('div');
@@ -184,6 +190,142 @@
 
     updateProgress(0, questions.length + 1);
 
+    function renderBudgetSlider(step, q, stepIndex) {
+      var options = q.options || [];
+      var defaultIndex = Math.min(1, options.length - 1);
+      answers[q.key] = options[defaultIndex] ? options[defaultIndex].value : '0';
+
+      var wrap = document.createElement('div');
+      wrap.className = 'budget-slider';
+
+      var valueLabel = document.createElement('p');
+      valueLabel.className = 'budget-slider-value';
+      valueLabel.textContent = options[defaultIndex] ? options[defaultIndex].label : '';
+      wrap.appendChild(valueLabel);
+
+      var track = document.createElement('div');
+      track.className = 'budget-slider-track';
+      track.setAttribute('role', 'slider');
+      track.setAttribute('tabindex', '0');
+      track.setAttribute('aria-valuemin', '0');
+      track.setAttribute('aria-valuemax', String(options.length - 1));
+      track.setAttribute('aria-valuenow', String(defaultIndex));
+      track.setAttribute('aria-label', q.question);
+
+      var fill = document.createElement('div');
+      fill.className = 'budget-slider-fill';
+      track.appendChild(fill);
+
+      var thumb = document.createElement('div');
+      thumb.className = 'budget-slider-thumb';
+      track.appendChild(thumb);
+
+      var ticks = document.createElement('div');
+      ticks.className = 'budget-slider-ticks';
+
+      options.forEach(function (opt, idx) {
+        var tick = document.createElement('button');
+        tick.type = 'button';
+        tick.className = 'budget-slider-tick' + (idx === defaultIndex ? ' active' : '');
+        tick.dataset.index = String(idx);
+        tick.setAttribute('aria-label', opt.label);
+        tick.addEventListener('click', function () {
+          setBudgetIndex(idx);
+        });
+        ticks.appendChild(tick);
+      });
+
+      track.appendChild(ticks);
+      wrap.appendChild(track);
+
+      var labels = document.createElement('div');
+      labels.className = 'budget-slider-labels';
+      options.forEach(function (opt, idx) {
+        var label = document.createElement('button');
+        label.type = 'button';
+        label.className = 'budget-slider-label' + (idx === defaultIndex ? ' active' : '');
+        label.textContent = opt.label;
+        label.addEventListener('click', function () {
+          setBudgetIndex(idx);
+        });
+        labels.appendChild(label);
+      });
+      wrap.appendChild(labels);
+
+      var hint = document.createElement('p');
+      hint.className = 'budget-slider-hint';
+      hint.textContent = 'Glissez ou choisissez une tranche pour affiner les recommandations.';
+      wrap.appendChild(hint);
+
+      var continueBtn = document.createElement('button');
+      continueBtn.type = 'button';
+      continueBtn.className = 'btn-primary budget-slider-continue';
+      continueBtn.textContent = 'Continuer';
+      continueBtn.addEventListener('click', function () {
+        goToStep(stepIndex + 1);
+      });
+      wrap.appendChild(continueBtn);
+
+      step.appendChild(wrap);
+
+      function setBudgetIndex(idx) {
+        if (idx < 0 || idx >= options.length) return;
+        answers[q.key] = options[idx].value;
+        valueLabel.textContent = options[idx].label;
+        track.setAttribute('aria-valuenow', String(idx));
+
+        var pct = options.length > 1 ? (idx / (options.length - 1)) * 100 : 0;
+        fill.style.width = pct + '%';
+        thumb.style.left = pct + '%';
+
+        wrap.querySelectorAll('.budget-slider-tick').forEach(function (el, i) {
+          el.classList.toggle('active', i === idx);
+        });
+        wrap.querySelectorAll('.budget-slider-label').forEach(function (el, i) {
+          el.classList.toggle('active', i === idx);
+        });
+      }
+
+      setBudgetIndex(defaultIndex);
+
+      track.addEventListener('keydown', function (e) {
+        var current = parseInt(track.getAttribute('aria-valuenow') || '0', 10);
+        if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          setBudgetIndex(Math.min(options.length - 1, current + 1));
+        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+          e.preventDefault();
+          setBudgetIndex(Math.max(0, current - 1));
+        }
+      });
+
+      // Drag / click on track
+      var dragging = false;
+
+      function indexFromClientX(clientX) {
+        var rect = track.getBoundingClientRect();
+        var ratio = rect.width > 0 ? (clientX - rect.left) / rect.width : 0;
+        ratio = Math.max(0, Math.min(1, ratio));
+        return Math.round(ratio * (options.length - 1));
+      }
+
+      track.addEventListener('pointerdown', function (e) {
+        dragging = true;
+        track.setPointerCapture(e.pointerId);
+        setBudgetIndex(indexFromClientX(e.clientX));
+      });
+      track.addEventListener('pointermove', function (e) {
+        if (!dragging) return;
+        setBudgetIndex(indexFromClientX(e.clientX));
+      });
+      track.addEventListener('pointerup', function () {
+        dragging = false;
+      });
+      track.addEventListener('pointercancel', function () {
+        dragging = false;
+      });
+    }
+
     function goToStep(index) {
       var steps = container.querySelectorAll('.quiz-step');
       steps.forEach(function (s) { s.classList.remove('active'); });
@@ -213,12 +355,18 @@
   function submitQuiz(answers) {
     var flatAnswers = [];
     var coffretsOnly = false;
+    var maxPrice = '';
 
     Object.keys(answers).forEach(function (key) {
       var value = answers[key];
 
       if (key === 'coffrets_only') {
         coffretsOnly = !!value;
+        return;
+      }
+
+      if (key === 'budget') {
+        maxPrice = String(value || '');
         return;
       }
 
@@ -236,6 +384,7 @@
     appendHidden(form, 'mode', 'quiz');
     appendHidden(form, 'answers', JSON.stringify(flatAnswers));
     appendHidden(form, 'coffrets_only', coffretsOnly ? '1' : '0');
+    appendHidden(form, 'max_price', maxPrice);
 
     document.body.appendChild(form);
     form.submit();

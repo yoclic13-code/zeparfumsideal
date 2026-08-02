@@ -624,6 +624,129 @@ a { color: inherit; text-decoration: none; }
   margin: -1.6rem 0 1.6rem;
 }
 
+/* ---------- Curseur budget ---------- */
+.budget-slider {
+  max-width: 520px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.budget-slider-value {
+  font-family: var(--font-title);
+  font-size: clamp(1.6rem, 3vw, 2.1rem);
+  font-weight: 600;
+  margin: 0 0 2rem;
+  color: var(--black);
+}
+
+.budget-slider-track {
+  position: relative;
+  height: 6px;
+  margin: 1.4rem 1.1rem 0.9rem;
+  border-radius: 999px;
+  background: var(--beige);
+  cursor: pointer;
+  touch-action: none;
+  outline: none;
+}
+
+.budget-slider-track:focus-visible {
+  box-shadow: 0 0 0 3px rgba(184, 149, 91, 0.28);
+}
+
+.budget-slider-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0%;
+  border-radius: 999px;
+  background: var(--gold);
+  pointer-events: none;
+}
+
+.budget-slider-thumb {
+  position: absolute;
+  top: 50%;
+  left: 0%;
+  width: 22px;
+  height: 22px;
+  margin-left: -11px;
+  margin-top: -11px;
+  border-radius: 50%;
+  background: var(--off-white);
+  border: 2px solid var(--gold);
+  box-shadow: 0 4px 14px rgba(21, 21, 21, 0.12);
+  pointer-events: none;
+  transition: box-shadow 0.2s ease;
+}
+
+.budget-slider-track:active .budget-slider-thumb {
+  box-shadow: 0 6px 18px rgba(184, 149, 91, 0.35);
+}
+
+.budget-slider-ticks {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  pointer-events: none;
+}
+
+.budget-slider-tick {
+  width: 14px;
+  height: 14px;
+  margin-top: 0;
+  padding: 0;
+  border: 2px solid var(--beige);
+  border-radius: 50%;
+  background: var(--off-white);
+  pointer-events: auto;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+
+.budget-slider-tick.active {
+  border-color: var(--gold);
+  background: var(--gold);
+  transform: scale(1.1);
+}
+
+.budget-slider-labels {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin-top: 1.1rem;
+}
+
+.budget-slider-label {
+  border: none;
+  background: transparent;
+  padding: 0.35rem 0.2rem;
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  color: var(--gray);
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.budget-slider-label.active {
+  color: var(--black);
+  font-weight: 500;
+}
+
+.budget-slider-hint {
+  margin: 1.4rem 0 0;
+  font-size: 0.88rem;
+  color: var(--gray);
+  line-height: 1.5;
+}
+
+.budget-slider-continue {
+  margin-top: 2rem;
+}
+
 .quiz-nav {
   margin-top: 2.6rem;
   display: flex;
