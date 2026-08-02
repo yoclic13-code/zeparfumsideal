@@ -11,7 +11,7 @@
   var segments = [
     { text: 'Trouvez ', accent: false, breakAfter: false },
     { text: '"Ze" Parfums', accent: true, breakAfter: true },
-    { text: 'qui vous "ressemble".', accent: false, breakAfter: false }
+    { text: 'qui vous ressemble.', accent: false, breakAfter: false }
   ];
 
   function delay(ms) {
@@ -23,7 +23,7 @@
   function renderStatic() {
     root.innerHTML =
       '<span class="typewriter-line">Trouvez <span class="typewriter-accent">"Ze" Parfums</span></span>' +
-      '<span class="typewriter-line">qui vous "ressemble".</span>';
+      '<span class="typewriter-line">qui vous ressemble.</span>';
     revealSubtitle();
   }
 
