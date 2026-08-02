@@ -63,11 +63,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     }
+
+    if ($action === 'normalize_prices') {
+        try {
+            $fix = (new PerfumeRepository(getDb()))->normalizeAllPrices();
+            $message = 'Prix normalisés : ' . (int)$fix['updated'] . ' mis à jour sur ' . (int)$fix['total'] . '.';
+        } catch (Throwable $e) {
+            $error = $e->getMessage();
+        }
+    }
+
+    if ($action === 'cleanup_catalog') {
+        try {
+            $repo = new PerfumeRepository(getDb());
+            $dedupe = $repo->dedupeZeparfumsByPrestashopId();
+            $message = 'Nettoyage : ' . (int)$dedupe['deactivated'] . ' doublon(s) désactivé(s) sur '
+                . (int)$dedupe['groups'] . ' groupe(s). Actifs : ' . $repo->countActive() . '.';
+        } catch (Throwable $e) {
+            $error = $e->getMessage();
+        }
+    }
 }
 
 $totalPerfumes = 0;
 try {
-    $totalPerfumes = (new PerfumeRepository(getDb()))->count();
+    $totalPerfumes = (new PerfumeRepository(getDb()))->countActive();
 } catch (Throwable $e) {
     // ignore
 }
@@ -87,10 +107,13 @@ function runZeparfumsScrapeSync(string $cookie, string $categories): array
         throw new RuntimeException('Aucun produit à importer.');
     }
 
-    $service = new CatalogSyncService(new PerfumeRepository(getDb()));
+    $repo = new PerfumeRepository(getDb());
+    $service = new CatalogSyncService($repo);
     $created = 0;
     $updated = 0;
     $errors = 0;
+    $seenPsIds = [];
+    $withImage = 0;
 
     foreach ($products as $product) {
         if (!is_array($product)) {
@@ -98,6 +121,17 @@ function runZeparfumsScrapeSync(string $cookie, string $categories): array
             continue;
         }
         try {
+            $psId = (int)($product['prestashop_id'] ?? 0);
+            if ($psId <= 0) {
+                $psId = (int)(PerfumeRepository::extractPrestashopIdFromUrl($product['product_url'] ?? '') ?? 0);
+            }
+            if ($psId > 0) {
+                $seenPsIds[] = $psId;
+            }
+            if (!empty($product['image_url'])) {
+                $withImage++;
+            }
+
             $result = $service->syncProduct($product);
             if (($result['action'] ?? '') === 'created') {
                 $created++;
@@ -109,14 +143,24 @@ function runZeparfumsScrapeSync(string $cookie, string $categories): array
         }
     }
 
+    $dedupe = $repo->dedupeZeparfumsByPrestashopId();
+    $deactivated = $repo->deactivateMissingZeparfums($seenPsIds);
+    $priceFix = $repo->normalizeAllPrices();
+
     setSetting('zeparfums_last_sync_at', date('c'));
     setSetting('zeparfums_last_sync_count', (string)count($products));
 
     return [
         'scraped' => count($products),
+        'scraped_with_image' => $withImage,
         'created' => $created,
         'updated' => $updated,
         'errors' => $errors,
+        'dedupe_groups' => $dedupe['groups'],
+        'dedupe_deactivated' => $dedupe['deactivated'],
+        'orphans_deactivated' => $deactivated,
+        'prices_fixed' => $priceFix['updated'],
+        'active_after' => $repo->countActive(),
         'categories' => $data['categories'] ?? [],
         'auth' => 'cookie',
         'engine' => 'php',
@@ -140,7 +184,7 @@ $cookieMasked = $cookie !== ''
 <div class="admin-wrap">
   <div class="admin-header">
     <h1>Sync ZeParfums</h1>
-    <span><?= (int)$totalPerfumes ?> parfum(s) en base</span>
+    <span><?= (int)$totalPerfumes ?> actif(s) en base</span>
   </div>
   <?php renderAdminNav('sync'); ?>
 
@@ -149,11 +193,18 @@ $cookieMasked = $cookie !== ''
 
   <?php if ($report !== null): ?>
   <div class="admin-card">
-    <p style="color:#2f7a2f;margin:0;">
-      Scrape : <strong><?= (int)$report['scraped'] ?></strong> produit(s) —
+    <p style="color:#2f7a2f;margin:0 0 0.6rem;">
+      Scrape : <strong><?= (int)$report['scraped'] ?></strong> produit(s)
+      (<?= (int)($report['scraped_with_image'] ?? 0) ?> avec image) —
       créés <?= (int)$report['created'] ?>,
       mis à jour <?= (int)$report['updated'] ?>,
       erreurs <?= (int)$report['errors'] ?>.
+    </p>
+    <p style="color:var(--gray);margin:0;font-size:0.9rem;">
+      Doublons désactivés : <?= (int)($report['dedupe_deactivated'] ?? 0) ?>
+      (<?= (int)($report['dedupe_groups'] ?? 0) ?> groupes) —
+      absents du catalogue : <?= (int)($report['orphans_deactivated'] ?? 0) ?> —
+      actifs après sync : <strong><?= (int)($report['active_after'] ?? 0) ?></strong>.
     </p>
   </div>
   <?php endif; ?>
@@ -190,6 +241,12 @@ $cookieMasked = $cookie !== ''
         <button type="submit" name="action" value="sync" class="btn-primary" id="btn-sync">
           Synchroniser le catalogue
         </button>
+        <button type="submit" name="action" value="normalize_prices" class="btn-primary" style="background:#4a6741;">
+          Corriger les prix (TTC)
+        </button>
+        <button type="submit" name="action" value="cleanup_catalog" class="btn-primary" style="background:#6b5b4a;">
+          Nettoyer doublons
+        </button>
         <?php if ($cookie !== ''): ?>
           <button type="submit" name="action" value="clear_cookie" class="btn-primary" style="background:#a33;">Effacer le cookie</button>
         <?php endif; ?>
@@ -215,6 +272,7 @@ $cookieMasked = $cookie !== ''
       <li>Fonctionne sur o2switch sans <code>pip</code> / Python.</li>
       <li>Le cookie donne accès à votre session CSE : ne le partagez pas.</li>
       <li>Après sync, lancez <a href="import.php">Import API → enrichissement</a> pour les notes / quiz.</li>
+      <li>Le bouton <strong>Corriger les prix (TTC)</strong> convertit les anciens prix HT et les écarts d’1 centime (ex. 46,91 → 46,90).</li>
     </ul>
   </div>
 </div>

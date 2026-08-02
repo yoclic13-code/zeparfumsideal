@@ -264,15 +264,17 @@ class ZeparfumsScraper
                 continue;
             }
             $seen[$productUrl] = true;
-            $psId = null;
-            if (preg_match('#/(\d+)(?:-\d+)?-[^/]+\.html#', $productUrl, $m)) {
-                $psId = (int)$m[1];
+            $psId = PerfumeRepository::extractPrestashopIdFromUrl($productUrl);
+            $imageUrl = '';
+            $parent = $a->parentNode;
+            if ($parent instanceof DOMElement) {
+                $imageUrl = $this->extractImageUrl($parent, $xpath);
             }
             $products[] = [
                 'name' => $name,
                 'brand' => '',
                 'price' => null,
-                'image_url' => '',
+                'image_url' => $imageUrl,
                 'product_url' => $productUrl,
                 'prestashop_id' => $psId,
                 'is_active' => 1,
@@ -311,26 +313,32 @@ class ZeparfumsScraper
         }
 
         $price = null;
-        $priceNode = $xpath->query(
+        $priceNodes = $xpath->query(
             ".//*[contains(@class,'price')] | .//*[@itemprop='price']",
             $node
-        )->item(0);
-        if ($priceNode instanceof DOMElement) {
-            $raw = $priceNode->getAttribute('content');
-            if ($raw === '') {
-                $raw = $priceNode->textContent;
+        );
+        foreach ($priceNodes as $priceNode) {
+            if (!$priceNode instanceof DOMElement) {
+                continue;
             }
-            $price = $this->parsePrice($raw);
+            // Priorité au texte visible (celui affiché sur le site), puis à content=.
+            $candidates = [
+                $this->cleanText($priceNode->textContent),
+                $priceNode->getAttribute('content'),
+            ];
+            foreach ($candidates as $raw) {
+                if ($raw === '') {
+                    continue;
+                }
+                $parsed = $this->parsePrice($raw);
+                if ($parsed !== null) {
+                    $price = $parsed;
+                    break 2;
+                }
+            }
         }
 
-        $imageUrl = '';
-        $img = $xpath->query('.//img', $node)->item(0);
-        if ($img instanceof DOMElement) {
-            $imageUrl = $img->getAttribute('data-full-size-image-url')
-                ?: $img->getAttribute('data-src')
-                ?: $img->getAttribute('src');
-            $imageUrl = $this->absoluteUrl($imageUrl);
-        }
+        $imageUrl = $this->extractImageUrl($node, $xpath);
 
         $brand = '';
         $brandNode = $xpath->query(
@@ -345,8 +353,8 @@ class ZeparfumsScraper
         $rawId = $node->getAttribute('data-id-product');
         if ($rawId !== '' && ctype_digit($rawId)) {
             $psId = (int)$rawId;
-        } elseif (preg_match('#/(\d+)(?:-\d+)?-[^/]+\.html#', $productUrl, $m)) {
-            $psId = (int)$m[1];
+        } else {
+            $psId = PerfumeRepository::extractPrestashopIdFromUrl($productUrl);
         }
 
         return [
@@ -358,6 +366,118 @@ class ZeparfumsScraper
             'prestashop_id' => $psId,
             'is_active' => 1,
         ];
+    }
+
+    private function extractImageUrl(DOMElement $node, DOMXPath $xpath): string
+    {
+        $imgs = $xpath->query('.//img', $node);
+        if ($imgs === false) {
+            return '';
+        }
+
+        $candidates = [];
+        foreach ($imgs as $img) {
+            if (!$img instanceof DOMElement) {
+                continue;
+            }
+            foreach ([
+                'data-full-size-image-url',
+                'data-image-large-src',
+                'data-lazy-src',
+                'data-src',
+                'data-original',
+                'src',
+            ] as $attr) {
+                $value = trim($img->getAttribute($attr));
+                if ($value !== '') {
+                    $candidates[] = $value;
+                }
+            }
+
+            $srcset = trim($img->getAttribute('srcset'));
+            if ($srcset !== '') {
+                $best = $this->bestFromSrcset($srcset);
+                if ($best !== '') {
+                    $candidates[] = $best;
+                }
+            }
+        }
+
+        $ranked = [];
+        foreach ($candidates as $raw) {
+            $url = $this->absoluteUrl($raw);
+            if (!$this->isUsableImageUrl($url)) {
+                continue;
+            }
+            $ranked[] = [
+                'url' => $url,
+                'score' => $this->scoreImageUrl($url),
+            ];
+        }
+
+        if ($ranked === []) {
+            return '';
+        }
+
+        usort($ranked, fn($a, $b) => $b['score'] <=> $a['score']);
+        return $ranked[0]['url'];
+    }
+
+    private function bestFromSrcset(string $srcset): string
+    {
+        $bestUrl = '';
+        $bestW = -1;
+        foreach (explode(',', $srcset) as $part) {
+            $part = trim($part);
+            if ($part === '') {
+                continue;
+            }
+            $bits = preg_split('/\s+/', $part) ?: [];
+            $url = $bits[0] ?? '';
+            $w = 0;
+            if (isset($bits[1]) && preg_match('/(\d+)w/', $bits[1], $m)) {
+                $w = (int)$m[1];
+            }
+            if ($url !== '' && $w >= $bestW) {
+                $bestW = $w;
+                $bestUrl = $url;
+            }
+        }
+        return $bestUrl;
+    }
+
+    private function isUsableImageUrl(string $url): bool
+    {
+        if ($url === '' || str_starts_with($url, 'data:')) {
+            return false;
+        }
+        $low = strtolower($url);
+        foreach (['blank.gif', 'placeholder', 'no-picture', 'no_picture', 'lazy.svg', 'spacer.gif'] as $bad) {
+            if (str_contains($low, $bad)) {
+                return false;
+            }
+        }
+        return (bool)preg_match('#\.(jpe?g|png|webp|gif)(\?|#|$)#i', $url)
+            || str_contains($low, '_default/')
+            || str_contains($low, '-home_default')
+            || str_contains($low, '-large_default')
+            || str_contains($low, '-medium_default');
+    }
+
+    private function scoreImageUrl(string $url): int
+    {
+        $low = strtolower($url);
+        $score = 0;
+        if (str_contains($low, 'large_default') || str_contains($low, 'thickbox')) {
+            $score += 50;
+        } elseif (str_contains($low, 'home_default') || str_contains($low, 'medium_default')) {
+            $score += 30;
+        }
+        if (str_contains($low, 'zeparfums.com')) {
+            $score += 10;
+        }
+        $score += min(20, (int)(strlen($url) / 20));
+        return $score;
     }
 
     private function normalizeUrl(string $url): string
@@ -396,6 +516,9 @@ class ZeparfumsScraper
 
     private function parsePrice(string $raw): ?float
     {
+        if (function_exists('parseShopPrice')) {
+            return parseShopPrice($raw);
+        }
         $raw = str_replace(["\xc2\xa0", ' ', '€'], '', $raw);
         $raw = str_replace(',', '.', $raw);
         $raw = preg_replace('/[^\d.]/', '', $raw) ?? '';

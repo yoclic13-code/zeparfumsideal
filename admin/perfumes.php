@@ -13,7 +13,8 @@ $filters = [
     'name'      => cleanInput($_GET['name'] ?? ''),
     'brand'     => cleanInput($_GET['brand'] ?? ''),
     'gender'    => cleanInput($_GET['gender'] ?? ''),
-    'is_active' => $_GET['is_active'] ?? '',
+    // Par défaut : actifs seulement (aligné sur le catalogue boutique).
+    'is_active' => array_key_exists('is_active', $_GET) ? ($_GET['is_active'] ?? '') : '1',
 ];
 
 $page = max(1, (int)($_GET['page'] ?? 1));

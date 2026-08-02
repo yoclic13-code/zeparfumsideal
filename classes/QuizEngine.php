@@ -453,7 +453,15 @@ class QuizEngine
             return false;
         }
 
-        return (float)$price <= $maxPrice;
+        $normalized = function_exists('normalizeShopPrice')
+            ? normalizeShopPrice($price)
+            : (float)$price;
+
+        if ($normalized === null) {
+            return false;
+        }
+
+        return $normalized <= $maxPrice;
     }
 
     /**

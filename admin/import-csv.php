@@ -57,9 +57,7 @@ function detectGender(string $name): string
 
 function parsePrice(string $raw): ?float
 {
-    $raw = str_replace(["\xC2\xA0", ' ', '€'], '', $raw);
-    $raw = str_replace(',', '.', $raw);
-    return is_numeric($raw) ? (float)$raw : null;
+    return parseShopPrice($raw);
 }
 
 $db = getDb();

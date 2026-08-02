@@ -92,10 +92,75 @@ function requireAdmin(): void
  */
 function formatPrice($price): string
 {
-    if ($price === null || $price === '') {
+    $normalized = normalizeShopPrice($price);
+    if ($normalized === null) {
         return '';
     }
-    return number_format((float)$price, 2, ',', ' ') . ' €';
+    return number_format($normalized, 2, ',', ' ') . ' €';
+}
+
+/**
+ * Arrondi monétaire à 2 décimales.
+ */
+function roundMoney($price): ?float
+{
+    if ($price === null || $price === '') {
+        return null;
+    }
+    if (!is_numeric($price)) {
+        return null;
+    }
+    return round((float)$price, 2);
+}
+
+/**
+ * Parse une chaîne prix boutique (FR/EN) vers un float.
+ */
+function parseShopPrice(string $raw): ?float
+{
+    $raw = str_replace(["\xc2\xa0", ' ', '€', 'EUR', 'eur'], '', $raw);
+    $raw = str_replace(',', '.', $raw);
+    $raw = preg_replace('/[^\d.]/', '', $raw) ?? '';
+    if ($raw === '' || !is_numeric($raw)) {
+        return null;
+    }
+    return normalizeShopPrice((float)$raw);
+}
+
+/**
+ * Normalise un prix catalogue pour coller au TTC affiché sur zeparfums.com.
+ *
+ * - Convertit les prix HT typiques (TTC/1,2) vers le TTC boutique.
+ * - Corrige les écarts d'1 centime dus aux arrondis flottants (46,91 → 46,90).
+ */
+function normalizeShopPrice($price): ?float
+{
+    $price = roundMoney($price);
+    if ($price === null || $price <= 0) {
+        return $price;
+    }
+
+    $cents = (int)round(fmod($price * 100, 100));
+    // Centimes typiques après division d'un prix .90 / 1,20.
+    $htLikeCents = [8, 25, 42, 58, 75, 92];
+    if (in_array($cents, $htLikeCents, true)) {
+        $asTtc = roundMoney($price * 1.2);
+        if ($asTtc !== null) {
+            $ttcCents = (int)round(fmod($asTtc * 100, 100));
+            // Prix TTC boutique souvent en .00 / .50 / .90 / .95
+            if (in_array($ttcCents, [0, 50, 90, 95], true)) {
+                $price = $asTtc;
+            }
+        }
+    }
+
+    // Écart d'1 centime autour d'un dixième (46,91 → 46,90).
+    $nearestTenth = round($price * 10) / 10;
+    if (abs($price - $nearestTenth) <= 0.011) {
+        $price = roundMoney($nearestTenth) ?? $price;
+    }
+
+    return roundMoney($price);
 }
 
 /**
@@ -242,12 +307,13 @@ function referralDiscountAmount(): float
  */
 function referralDiscountedPrice(?float $price): ?float
 {
-    if ($price === null || $price === '') {
+    $price = normalizeShopPrice($price);
+    if ($price === null) {
         return null;
     }
 
     $percent = referralDiscountAmount();
-    return max(0.0, (float)$price * (1 - $percent / 100));
+    return roundMoney(max(0.0, $price * (1 - $percent / 100)));
 }
 
 /**
@@ -255,11 +321,11 @@ function referralDiscountedPrice(?float $price): ?float
  */
 function renderPerfumePriceBlock($price): string
 {
-    if ($price === null || $price === '') {
+    $catalogPrice = normalizeShopPrice($price);
+    if ($catalogPrice === null) {
         return '';
     }
 
-    $catalogPrice = (float)$price;
     $html = '<div class="result-price">';
 
     if (referralEnabled()) {

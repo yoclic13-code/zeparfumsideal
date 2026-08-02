@@ -55,7 +55,13 @@ class CatalogSyncService
 
         $price = $payload['price'] ?? null;
         if ($price !== null && $price !== '') {
-            $price = is_numeric($price) ? (float)$price : self::parsePrice((string)$price);
+            if (is_numeric($price)) {
+                $price = normalizeShopPrice((float)$price);
+            } else {
+                $price = function_exists('parseShopPrice')
+                    ? parseShopPrice((string)$price)
+                    : self::parsePrice((string)$price);
+            }
         } else {
             $price = null;
         }
@@ -74,12 +80,27 @@ class CatalogSyncService
             'is_active'   => $isActive,
         ];
 
+        // Ne jamais écraser une image / un prix existants avec une valeur vide.
+        if ($existing) {
+            if (($shopData['image_url'] === null || $shopData['image_url'] === '')
+                && !empty($existing['image_url'])) {
+                $shopData['image_url'] = $existing['image_url'];
+            }
+            if (($shopData['price'] === null || $shopData['price'] === '')
+                && isset($existing['price']) && $existing['price'] !== null && $existing['price'] !== '') {
+                $shopData['price'] = $existing['price'];
+            }
+        }
+
         // Conserve l'URL existante si elle n'ajoute qu'un fragment PrestaShop (#/contenance,...).
         if ($existing && !empty($existing['product_url']) && !empty($shopData['product_url'])) {
             $oldUrl = (string)$existing['product_url'];
             $newUrl = (string)$shopData['product_url'];
-            if (str_starts_with($oldUrl, $newUrl)) {
-                $shopData['product_url'] = $oldUrl;
+            if (str_starts_with($oldUrl, $newUrl) || self::samePrestashopProduct($oldUrl, $newUrl)) {
+                // Préférer l'URL la plus complète (avec attribut / fragment) si déjà connue.
+                if (strlen($oldUrl) >= strlen($newUrl)) {
+                    $shopData['product_url'] = $oldUrl;
+                }
             }
         }
 
@@ -153,20 +174,33 @@ class CatalogSyncService
 
     private function resolveApiId(string $productUrl, int $psId): string
     {
-        // Même schéma que l'import CSV → met à jour les produits déjà importés.
-        // Les URLs CSV peuvent contenir un fragment (#/contenance,...) : on hash le chemin seul
-        // uniquement si aucun existant n'est trouvé (voir findExisting).
-        if ($productUrl !== '') {
-            return 'csv-' . md5($productUrl);
+        if ($psId <= 0) {
+            $psId = (int)(PerfumeRepository::extractPrestashopIdFromUrl($productUrl) ?? 0);
         }
+        // Clé stable par id PrestaShop (évite les doublons quand l'URL change de format).
         if ($psId > 0) {
             return 'ps-' . $psId;
+        }
+        if ($productUrl !== '') {
+            $pathOnly = preg_replace('/[#?].*$/', '', $productUrl) ?: $productUrl;
+            return 'csv-' . md5($pathOnly);
         }
         throw new InvalidArgumentException('product_url ou prestashop_id est obligatoire.');
     }
 
     private function findExisting(string $apiId, string $productUrl, int $psId): ?array
     {
+        if ($psId <= 0) {
+            $psId = (int)(PerfumeRepository::extractPrestashopIdFromUrl($productUrl) ?? 0);
+        }
+
+        if ($psId > 0) {
+            $existing = $this->repo->findByPrestashopId($psId);
+            if ($existing) {
+                return $existing;
+            }
+        }
+
         $existing = $this->repo->findByApiId($apiId);
         if ($existing) {
             return $existing;
@@ -178,7 +212,7 @@ class CatalogSyncService
             }
         }
         if ($productUrl !== '') {
-            $pathOnly = preg_replace('/#.*$/', '', $productUrl) ?: $productUrl;
+            $pathOnly = preg_replace('/[#?].*$/', '', $productUrl) ?: $productUrl;
             $existing = $this->repo->findByProductUrl($productUrl);
             if ($existing) {
                 return $existing;
@@ -191,7 +225,6 @@ class CatalogSyncService
             if ($existing) {
                 return $existing;
             }
-            // Anciens imports CSV avec fragment dans product_url
             if ($pathOnly !== $productUrl) {
                 $existing = $this->repo->findByApiId('csv-' . md5($pathOnly));
                 if ($existing) {
@@ -200,6 +233,13 @@ class CatalogSyncService
             }
         }
         return null;
+    }
+
+    private static function samePrestashopProduct(string $urlA, string $urlB): bool
+    {
+        $a = PerfumeRepository::extractPrestashopIdFromUrl($urlA);
+        $b = PerfumeRepository::extractPrestashopIdFromUrl($urlB);
+        return $a !== null && $b !== null && $a === $b;
     }
 
     public static function detectBrand(string $name): string
@@ -239,8 +279,11 @@ class CatalogSyncService
 
     public static function parsePrice(string $raw): ?float
     {
+        if (function_exists('parseShopPrice')) {
+            return parseShopPrice($raw);
+        }
         $raw = str_replace(["\xC2\xA0", ' ', '€'], '', $raw);
         $raw = str_replace(',', '.', $raw);
-        return is_numeric($raw) ? (float)$raw : null;
+        return is_numeric($raw) ? round((float)$raw, 2) : null;
     }
 }

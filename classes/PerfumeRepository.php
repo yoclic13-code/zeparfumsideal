@@ -40,7 +40,45 @@ class PerfumeRepository
         if ($value === false || $value === null || $value === '') {
             return null;
         }
-        return (float)$value;
+        $normalized = function_exists('normalizeShopPrice')
+            ? normalizeShopPrice((float)$value)
+            : (float)$value;
+        return $normalized;
+    }
+
+    /**
+     * Recalcule et réécrit tous les prix pour coller au TTC boutique.
+     * @return array{updated:int,total:int}
+     */
+    public function normalizeAllPrices(): array
+    {
+        if (!function_exists('normalizeShopPrice')) {
+            return ['updated' => 0, 'total' => 0];
+        }
+
+        $rows = $this->db->query(
+            "SELECT id, price FROM perfumes WHERE price IS NOT NULL AND price > 0"
+        )->fetchAll(PDO::FETCH_ASSOC);
+
+        $update = $this->db->prepare("UPDATE perfumes SET price = :price WHERE id = :id");
+        $updated = 0;
+
+        foreach ($rows as $row) {
+            $current = (float)$row['price'];
+            $normalized = normalizeShopPrice($current);
+            if ($normalized === null) {
+                continue;
+            }
+            if (abs($normalized - $current) >= 0.005) {
+                $update->execute([
+                    'price' => $normalized,
+                    'id' => (int)$row['id'],
+                ]);
+                $updated++;
+            }
+        }
+
+        return ['updated' => $updated, 'total' => count($rows)];
     }
 
     /**
@@ -348,5 +386,164 @@ class PerfumeRepository
     public function count(): int
     {
         return (int)$this->db->query("SELECT COUNT(*) FROM perfumes")->fetchColumn();
+    }
+
+    public function countActive(): int
+    {
+        return (int)$this->db->query("SELECT COUNT(*) FROM perfumes WHERE is_active = 1")->fetchColumn();
+    }
+
+    /**
+     * Extrait l'id produit PrestaShop depuis une URL boutique.
+     * Ex. /accueil/103310-1787-slug.html → 103310
+     */
+    public static function extractPrestashopIdFromUrl(?string $url): ?int
+    {
+        if ($url === null || $url === '') {
+            return null;
+        }
+        // Délimiteur ~ : éviter le conflit avec # fragment dans la classe [^...].
+        if (preg_match('~/(?:accueil/)?(\d+)(?:-\d+)?-[^/\#?]+\.html~i', $url, $m)) {
+            return (int)$m[1];
+        }
+        return null;
+    }
+
+    /**
+     * Trouve un produit déjà importé pour un id PrestaShop (toutes variantes d'URL).
+     */
+    public function findByPrestashopId(int $psId): ?array
+    {
+        if ($psId <= 0) {
+            return null;
+        }
+
+        $byApi = $this->findByApiId('ps-' . $psId);
+        if ($byApi) {
+            return $byApi;
+        }
+
+        $patterns = [
+            '%/' . $psId . '-%.html%',
+            '%/' . $psId . '-%.html',
+        ];
+        $stmt = $this->db->prepare(
+            "SELECT * FROM perfumes
+             WHERE api_id = :api
+                OR product_url LIKE :p1
+                OR product_url LIKE :p2
+             ORDER BY
+                (image_url IS NOT NULL AND image_url <> '') DESC,
+                (price IS NOT NULL) DESC,
+                id ASC
+             LIMIT 1"
+        );
+        $stmt->execute([
+            'api' => 'ps-' . $psId,
+            'p1' => '%/' . $psId . '-%.html%',
+            'p2' => '%/' . $psId . '-%.html',
+        ]);
+        $row = $stmt->fetch();
+        return $row ?: null;
+    }
+
+    /**
+     * Désactive les produits zeparfums absents de la dernière sync.
+     * @param list<int> $seenPsIds
+     */
+    public function deactivateMissingZeparfums(array $seenPsIds): int
+    {
+        $seenPsIds = array_values(array_unique(array_filter(array_map('intval', $seenPsIds), fn($id) => $id > 0)));
+        if ($seenPsIds === []) {
+            return 0;
+        }
+
+        $rows = $this->db->query(
+            "SELECT id, product_url FROM perfumes
+             WHERE is_active = 1
+               AND product_url IS NOT NULL
+               AND product_url LIKE '%zeparfums%'"
+        )->fetchAll(PDO::FETCH_ASSOC);
+
+        $seenLookup = array_fill_keys($seenPsIds, true);
+        $deactivate = $this->db->prepare(
+            "UPDATE perfumes SET is_active = 0, updated_at = NOW() WHERE id = :id"
+        );
+        $count = 0;
+        foreach ($rows as $row) {
+            $psId = self::extractPrestashopIdFromUrl($row['product_url'] ?? '');
+            if ($psId === null) {
+                continue;
+            }
+            if (!isset($seenLookup[$psId])) {
+                $deactivate->execute(['id' => (int)$row['id']]);
+                $count++;
+            }
+        }
+        return $count;
+    }
+
+    /**
+     * Déduplique les doublons d'un même id PrestaShop (garde le plus complet).
+     * @return array{groups:int,deactivated:int}
+     */
+    public function dedupeZeparfumsByPrestashopId(): array
+    {
+        $rows = $this->db->query(
+            "SELECT id, product_url, image_url, price, top_notes, api_id
+             FROM perfumes
+             WHERE product_url IS NOT NULL AND product_url LIKE '%zeparfums%'"
+        )->fetchAll(PDO::FETCH_ASSOC);
+
+        $groups = [];
+        foreach ($rows as $row) {
+            $psId = self::extractPrestashopIdFromUrl($row['product_url'] ?? '');
+            if ($psId === null) {
+                continue;
+            }
+            $groups[$psId][] = $row;
+        }
+
+        $deactivate = $this->db->prepare(
+            "UPDATE perfumes SET is_active = 0, updated_at = NOW() WHERE id = :id"
+        );
+        $groupCount = 0;
+        $deactivated = 0;
+
+        foreach ($groups as $group) {
+            if (count($group) < 2) {
+                continue;
+            }
+            $groupCount++;
+            usort($group, function ($a, $b) {
+                $score = function ($row) {
+                    $s = 0;
+                    if (!empty($row['image_url'])) {
+                        $s += 100;
+                    }
+                    if ($row['price'] !== null && $row['price'] !== '') {
+                        $s += 20;
+                    }
+                    $notes = (string)($row['top_notes'] ?? '');
+                    if ($notes !== '' && $notes !== '[]' && $notes !== 'null') {
+                        $s += 50;
+                    }
+                    return $s;
+                };
+                $diff = $score($b) <=> $score($a);
+                return $diff !== 0 ? $diff : ((int)$a['id'] <=> (int)$b['id']);
+            });
+            $keepId = (int)$group[0]['id'];
+            foreach ($group as $row) {
+                $id = (int)$row['id'];
+                if ($id === $keepId) {
+                    continue;
+                }
+                $deactivate->execute(['id' => $id]);
+                $deactivated++;
+            }
+        }
+
+        return ['groups' => $groupCount, 'deactivated' => $deactivated];
     }
 }
