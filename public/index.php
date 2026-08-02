@@ -3,7 +3,7 @@ require_once __DIR__ . '/../config/app.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/functions.php';
 
-$pageTitle = 'Trouvez le parfum qui vous correspond — ' . SITE_NAME;
+$pageTitle = 'Trouvez le Ze Parfums qui vous ressemble — ' . SITE_NAME;
 $heroOverlayOpacity = heroOverlayOpacity();
 $heroVideoFile = heroVideoFilename();
 $heroVideoExt = strtolower(pathinfo($heroVideoFile, PATHINFO_EXTENSION));
@@ -44,7 +44,7 @@ require_once __DIR__ . '/../includes/header.php';
   </div>
 
   <div class="home-inner">
-    <h1 class="home-title" id="heroTypewriter" aria-label="Trouvez Ze Parfums qui vous correspond."></h1>
+    <h1 class="home-title" id="heroTypewriter" aria-label="Trouvez le Ze Parfums qui vous ressemble."></h1>
     <p class="home-subtitle">
       Répondez à quelques questions ou partez d'un parfum que vous aimez déjà.
       Nous vous proposerons une sélection adaptée à vos goûts, à votre style et à vos envies.
