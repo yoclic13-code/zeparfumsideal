@@ -70,7 +70,7 @@ try {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Dashboard — Administration</title>
-<link rel="stylesheet" href="assets/css/style.css">
+<link rel="stylesheet" href="assets/css/style.css?v=<?= (int)@filemtime(__DIR__ . '/assets/css/style.css') ?>">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&family=Jost:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body class="admin-body">
@@ -82,28 +82,53 @@ try {
 
   <?php renderAdminNav('dashboard'); ?>
 
-  <div class="admin-stats-grid">
-    <div class="admin-stat-card">
-      <p class="admin-stat-label">Quiz générés</p>
-      <p class="admin-stat-value"><?= number_format($stats['quiz_total'], 0, ',', ' ') ?></p>
-      <p class="admin-stat-meta">Aujourd'hui : <?= (int)$stats['quiz_today'] ?> · 7 j : <?= (int)$stats['quiz_7d'] ?></p>
-    </div>
-    <div class="admin-stat-card">
-      <p class="admin-stat-label">Parfums recherchés</p>
-      <p class="admin-stat-value"><?= number_format($stats['searches_total'], 0, ',', ' ') ?></p>
-      <p class="admin-stat-meta">Aujourd'hui : <?= (int)$stats['searches_today'] ?> · Uniques : <?= (int)$stats['searches_unique'] ?></p>
-    </div>
-    <div class="admin-stat-card">
-      <p class="admin-stat-label">Quiz classiques</p>
-      <p class="admin-stat-value"><?= number_format($stats['quiz_classic'], 0, ',', ' ') ?></p>
-      <p class="admin-stat-meta">Parfum aimé : <?= number_format($stats['quiz_favorite'], 0, ',', ' ') ?></p>
-    </div>
-    <div class="admin-stat-card">
-      <p class="admin-stat-label">Catalogue</p>
-      <p class="admin-stat-value"><?= number_format($stats['perfumes_active'], 0, ',', ' ') ?></p>
-      <p class="admin-stat-meta">Actifs / <?= number_format($stats['perfumes_total'], 0, ',', ' ') ?> total</p>
-    </div>
-  </div>
+  <section class="admin-kpi-strip" aria-label="Indicateurs clés">
+    <article class="admin-kpi">
+      <div class="admin-kpi-top">
+        <span class="admin-kpi-label">Quiz générés</span>
+        <span class="admin-kpi-chip">30 j : <?= (int)$stats['quiz_30d'] ?></span>
+      </div>
+      <p class="admin-kpi-value"><?= number_format($stats['quiz_total'], 0, ',', ' ') ?></p>
+      <div class="admin-kpi-footer">
+        <span>Aujourd'hui <strong><?= (int)$stats['quiz_today'] ?></strong></span>
+        <span>7 jours <strong><?= (int)$stats['quiz_7d'] ?></strong></span>
+      </div>
+    </article>
+
+    <article class="admin-kpi">
+      <div class="admin-kpi-top">
+        <span class="admin-kpi-label">Parfums recherchés</span>
+        <span class="admin-kpi-chip">7 j : <?= (int)$stats['searches_7d'] ?></span>
+      </div>
+      <p class="admin-kpi-value"><?= number_format($stats['searches_total'], 0, ',', ' ') ?></p>
+      <div class="admin-kpi-footer">
+        <span>Aujourd'hui <strong><?= (int)$stats['searches_today'] ?></strong></span>
+        <span>Uniques <strong><?= (int)$stats['searches_unique'] ?></strong></span>
+      </div>
+    </article>
+
+    <article class="admin-kpi admin-kpi-split">
+      <div class="admin-kpi-half">
+        <span class="admin-kpi-label">Quiz classiques</span>
+        <p class="admin-kpi-value admin-kpi-value-sm"><?= number_format($stats['quiz_classic'], 0, ',', ' ') ?></p>
+      </div>
+      <div class="admin-kpi-half">
+        <span class="admin-kpi-label">Parfum aimé</span>
+        <p class="admin-kpi-value admin-kpi-value-sm"><?= number_format($stats['quiz_favorite'], 0, ',', ' ') ?></p>
+      </div>
+    </article>
+
+    <article class="admin-kpi">
+      <div class="admin-kpi-top">
+        <span class="admin-kpi-label">Catalogue</span>
+        <span class="admin-kpi-chip">actifs</span>
+      </div>
+      <p class="admin-kpi-value"><?= number_format($stats['perfumes_active'], 0, ',', ' ') ?></p>
+      <div class="admin-kpi-footer">
+        <span>Total en base <strong><?= number_format($stats['perfumes_total'], 0, ',', ' ') ?></strong></span>
+      </div>
+    </article>
+  </section>
 
   <div class="admin-dashboard-columns">
     <div class="admin-card">
