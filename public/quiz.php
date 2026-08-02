@@ -1,9 +1,23 @@
 <?php
 require_once __DIR__ . '/../config/app.php';
+require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../classes/PerfumeRepository.php';
 
 $mode = ($_GET['mode'] ?? 'quiz') === 'favorite' ? 'favorite' : 'quiz';
 $pageTitle = 'Quelques questions — ' . SITE_NAME;
+
+$minBudget = null;
+try {
+    $repo = new PerfumeRepository(getDb());
+    $minBudget = $repo->getMinActivePrice();
+} catch (Throwable $e) {
+    $minBudget = null;
+}
+if ($minBudget === null || $minBudget <= 0) {
+    $minBudget = 7.9;
+}
+$minBudget = round((float)$minBudget, 2);
 
 // Questions du parcours "quiz classique"
 $questions = [
@@ -31,6 +45,7 @@ $questions = [
         'key' => 'budget',
         'type' => 'budget',
         'question' => 'Quel budget maximal ne souhaitez-vous pas dépasser ?',
+        'min' => $minBudget,
     ],
     [
         'key' => 'family',
@@ -143,6 +158,7 @@ require_once __DIR__ . '/../includes/header.php';
 <script>
   window.QUIZ_MODE = <?= json_encode($mode) ?>;
   window.QUIZ_QUESTIONS = <?= json_encode($questions, JSON_UNESCAPED_UNICODE) ?>;
+  window.QUIZ_MIN_BUDGET = <?= json_encode($minBudget) ?>;
   window.PLACEHOLDER_IMG = <?= json_encode(placeholderDataUri()) ?>;
 </script>
 

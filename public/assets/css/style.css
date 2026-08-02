@@ -684,6 +684,13 @@ a { color: inherit; text-decoration: none; }
   line-height: 1.5;
 }
 
+.budget-input-error {
+  margin: 0.55rem 0 0;
+  font-size: 0.88rem;
+  color: #a14a3a;
+  line-height: 1.4;
+}
+
 .budget-input-continue {
   margin-top: 2rem;
 }

@@ -27,6 +27,23 @@ class PerfumeRepository
     }
 
     /**
+     * Prix le plus bas parmi les parfums actifs ayant un prix renseigné.
+     */
+    public function getMinActivePrice(): ?float
+    {
+        $stmt = $this->db->query(
+            "SELECT MIN(price) AS min_price
+             FROM perfumes
+             WHERE is_active = 1 AND price IS NOT NULL AND price > 0"
+        );
+        $value = $stmt->fetchColumn();
+        if ($value === false || $value === null || $value === '') {
+            return null;
+        }
+        return (float)$value;
+    }
+
+    /**
      * Retourne les tags (avec poids) associés à un parfum.
      */
     public function getTagsForPerfume(int $perfumeId): array

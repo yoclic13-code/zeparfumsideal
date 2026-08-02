@@ -193,6 +193,12 @@
     function renderBudgetInput(step, q, stepIndex) {
       answers[q.key] = '';
 
+      var minBudget = parseFloat(q.min != null ? q.min : (window.QUIZ_MIN_BUDGET || 1));
+      if (isNaN(minBudget) || minBudget <= 0) {
+        minBudget = 1;
+      }
+      minBudget = Math.round(minBudget * 100) / 100;
+
       var wrap = document.createElement('div');
       wrap.className = 'budget-input';
 
@@ -202,9 +208,9 @@
       var input = document.createElement('input');
       input.type = 'number';
       input.inputMode = 'decimal';
-      input.min = '1';
-      input.step = '1';
-      input.placeholder = '80';
+      input.min = String(minBudget);
+      input.step = '0.1';
+      input.placeholder = String(minBudget).replace('.', ',');
       input.setAttribute('aria-label', q.question);
       input.autocomplete = 'off';
 
@@ -218,8 +224,14 @@
 
       var hint = document.createElement('p');
       hint.className = 'budget-input-hint';
-      hint.textContent = 'Indiquez le montant maximum que vous ne souhaitez pas dépasser.';
+      hint.textContent = 'Minimum : ' + formatBudgetAmount(minBudget) + ' (parfum le moins cher du catalogue).';
       wrap.appendChild(hint);
+
+      var error = document.createElement('p');
+      error.className = 'budget-input-error';
+      error.hidden = true;
+      error.textContent = 'Le budget ne peut pas être inférieur à ' + formatBudgetAmount(minBudget) + '.';
+      wrap.appendChild(error);
 
       var continueBtn = document.createElement('button');
       continueBtn.type = 'button';
@@ -227,27 +239,56 @@
       continueBtn.textContent = 'Continuer';
       continueBtn.disabled = true;
 
-      function syncBudget() {
+      function syncBudget(clamp) {
         var raw = String(input.value || '').trim().replace(',', '.');
         var amount = parseFloat(raw);
-        if (!isNaN(amount) && amount > 0) {
-          answers[q.key] = String(Math.round(amount));
-          continueBtn.disabled = false;
-        } else {
+
+        if (raw === '' || isNaN(amount)) {
           answers[q.key] = '';
           continueBtn.disabled = true;
+          error.hidden = true;
+          return;
         }
+
+        if (amount < minBudget) {
+          if (clamp) {
+            amount = minBudget;
+            input.value = String(minBudget);
+            error.hidden = true;
+          } else {
+            answers[q.key] = '';
+            continueBtn.disabled = true;
+            error.hidden = false;
+            return;
+          }
+        } else {
+          error.hidden = true;
+        }
+
+        // Conserve 1 décimale utile (ex. 7,9) sans bruit.
+        amount = Math.round(amount * 10) / 10;
+        answers[q.key] = String(amount);
+        continueBtn.disabled = false;
       }
 
-      input.addEventListener('input', syncBudget);
+      input.addEventListener('input', function () {
+        syncBudget(false);
+      });
+      input.addEventListener('blur', function () {
+        syncBudget(true);
+      });
       input.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' && !continueBtn.disabled) {
+        if (e.key === 'Enter') {
           e.preventDefault();
-          goToStep(stepIndex + 1);
+          syncBudget(true);
+          if (!continueBtn.disabled) {
+            goToStep(stepIndex + 1);
+          }
         }
       });
 
       continueBtn.addEventListener('click', function () {
+        syncBudget(true);
         if (continueBtn.disabled) return;
         goToStep(stepIndex + 1);
       });
@@ -268,6 +309,10 @@
       setTimeout(function () {
         try { input.focus(); } catch (err) { /* ignore */ }
       }, 80);
+    }
+
+    function formatBudgetAmount(value) {
+      return String(value).replace('.', ',') + ' €';
     }
 
     function goToStep(index) {

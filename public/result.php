@@ -34,6 +34,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $maxPrice = null;
         if ($maxPriceRaw !== '' && is_numeric($maxPriceRaw) && (float)$maxPriceRaw > 0) {
             $maxPrice = (float)$maxPriceRaw;
+            $catalogMin = null;
+            try {
+                $catalogMin = $repo->getMinActivePrice();
+            } catch (Throwable $e) {
+                $catalogMin = null;
+            }
+            if ($catalogMin === null || $catalogMin <= 0) {
+                $catalogMin = 7.9;
+            }
+            if ($maxPrice < (float)$catalogMin) {
+                $maxPrice = (float)$catalogMin;
+            }
         }
         $results = $engine->recommendFromQuiz($answers, 3, $coffretsOnly, $maxPrice);
     }
