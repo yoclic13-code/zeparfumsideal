@@ -320,3 +320,85 @@ function placeholderDataUri(): string
 
     return 'data:image/svg+xml;utf8,' . rawurlencode($svg);
 }
+
+/**
+ * Crée la table de suivi des recherches parfum si absente.
+ */
+function ensurePerfumeSearchesTable(): void
+{
+    static $ready = false;
+    if ($ready) {
+        return;
+    }
+
+    try {
+        getDb()->exec(
+            "CREATE TABLE IF NOT EXISTS perfume_searches (
+                id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                query VARCHAR(255) NOT NULL,
+                results_count SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+                source ENUM('local','api','empty') NOT NULL DEFAULT 'local',
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (id),
+                KEY idx_created (created_at),
+                KEY idx_query (query)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+        );
+        $ready = true;
+    } catch (Throwable $e) {
+        // Ne jamais bloquer le site public.
+    }
+}
+
+/**
+ * Enregistre une recherche parfum (parcours "parfum aimé").
+ */
+function logPerfumeSearch(string $query, int $resultsCount, string $source = 'local'): void
+{
+    $query = trim($query);
+    if ($query === '' || mb_strlen($query) < 2) {
+        return;
+    }
+
+    if (!in_array($source, ['local', 'api', 'empty'], true)) {
+        $source = 'local';
+    }
+
+    try {
+        ensurePerfumeSearchesTable();
+        $stmt = getDb()->prepare(
+            'INSERT INTO perfume_searches (query, results_count, source) VALUES (:q, :count, :source)'
+        );
+        $stmt->execute([
+            'q' => mb_substr($query, 0, 255),
+            'count' => max(0, $resultsCount),
+            'source' => $source,
+        ]);
+    } catch (Throwable $e) {
+        // Ne jamais bloquer la recherche.
+    }
+}
+
+/**
+ * Navigation admin partagée.
+ */
+function renderAdminNav(string $active = ''): void
+{
+    $items = [
+        'dashboard' => ['href' => 'dashboard.php', 'label' => 'Dashboard'],
+        'perfumes' => ['href' => 'perfumes.php', 'label' => 'Parfums'],
+        'import' => ['href' => 'import.php', 'label' => 'Import API'],
+        'import-csv' => ['href' => 'import-csv.php', 'label' => 'Import CSV'],
+        'sync' => ['href' => 'sync.php', 'label' => 'Sync ZeParfums'],
+        'tags' => ['href' => 'tags.php', 'label' => 'Tags'],
+        'settings' => ['href' => 'settings.php', 'label' => 'Réglages'],
+    ];
+
+    echo '<nav class="admin-nav">';
+    foreach ($items as $key => $item) {
+        $class = $active === $key ? ' class="active"' : '';
+        echo '<a href="' . e($item['href']) . '"' . $class . '>' . e($item['label']) . '</a>';
+    }
+    echo '<a href="logout.php" class="admin-logout">D&eacute;connexion</a>';
+    echo '</nav>';
+}

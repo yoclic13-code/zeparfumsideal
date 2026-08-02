@@ -12,6 +12,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 DROP TABLE IF EXISTS `perfume_tags`;
 DROP TABLE IF EXISTS `quiz_results`;
 DROP TABLE IF EXISTS `quiz_sessions`;
+DROP TABLE IF EXISTS `perfume_searches`;
 DROP TABLE IF EXISTS `perfumes`;
 DROP TABLE IF EXISTS `tags`;
 DROP TABLE IF EXISTS `site_settings`;
@@ -115,6 +116,20 @@ CREATE TABLE `api_logs` (
   `response_preview` TEXT DEFAULT NULL,
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------
+-- Table: perfume_searches
+-- ---------------------------------------------------------
+CREATE TABLE `perfume_searches` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `query` VARCHAR(255) NOT NULL,
+  `results_count` SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  `source` ENUM('local','api','empty') NOT NULL DEFAULT 'local',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_created` (`created_at`),
+  KEY `idx_query` (`query`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------

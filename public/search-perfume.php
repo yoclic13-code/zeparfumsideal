@@ -23,6 +23,7 @@ $db = getDb();
 $repo = new PerfumeRepository($db);
 
 $results = $repo->search($query, 8);
+$source = 'local';
 
 if (empty($results)) {
     try {
@@ -35,11 +36,14 @@ if (empty($results)) {
                 $results[] = $p;
             }
         }
+        $source = empty($results) ? 'empty' : 'api';
     } catch (Throwable $e) {
-        // L'API est indisponible : on retourne simplement un résultat vide, sans casser le site.
         $results = [];
+        $source = 'empty';
     }
 }
+
+logPerfumeSearch($query, count($results), $source);
 
 $out = array_map(function ($p) {
     return [

@@ -8,14 +8,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password = $_POST['password'] ?? '';
     if (hash_equals(ADMIN_PASSWORD, $password)) {
         $_SESSION['is_admin'] = true;
-        redirect('perfumes.php');
+        redirect('dashboard.php');
     } else {
         $error = 'Mot de passe incorrect.';
     }
 }
 
 if (isAdminLoggedIn()) {
-    redirect('perfumes.php');
+    redirect('dashboard.php');
 }
 ?>
 <!DOCTYPE html>

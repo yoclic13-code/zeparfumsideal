@@ -41,16 +41,7 @@ $tags = $repo->getAllTags();
     <h1>Tags</h1>
     <span><?= count($tags) ?> tag(s)</span>
   </div>
-  <nav class="admin-nav">
-    <a href="perfumes.php">Parfums</a>
-    <a href="import.php">Import API</a>
-    <a href="import-csv.php">Import CSV</a>
-    <a href="sync.php">Sync ZeParfums</a>
-    <a href="tags.php" class="active">Tags</a>
-    <a href="settings.php">Réglages</a>
-  
-    <a href="logout.php" class="admin-logout">D&eacute;connexion</a>
-  </nav>
+  <?php renderAdminNav('tags'); ?>
 
   <?php if ($message): ?><p style="color:#2f7a2f;"><?= e($message) ?></p><?php endif; ?>
 

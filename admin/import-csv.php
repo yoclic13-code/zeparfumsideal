@@ -149,16 +149,7 @@ $totalPerfumes = $repo->count();
     <h1>Import catalogue (CSV)</h1>
     <span><?= $totalPerfumes ?> parfum(s) en base</span>
   </div>
-  <nav class="admin-nav">
-    <a href="perfumes.php">Parfums</a>
-    <a href="import.php">Import API</a>
-    <a href="import-csv.php" class="active">Import CSV</a>
-    <a href="sync.php">Sync ZeParfums</a>
-    <a href="tags.php">Tags</a>
-    <a href="settings.php">Réglages</a>
-  
-    <a href="logout.php" class="admin-logout">D&eacute;connexion</a>
-  </nav>
+  <?php renderAdminNav('import-csv'); ?>
 
   <div class="admin-card">
     <?php if ($error): ?><p class="flash-error"><?= e($error) ?></p><?php endif; ?>

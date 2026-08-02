@@ -45,16 +45,7 @@ $opacityPercent = (int)round($opacity * 100);
     <h1>Réglages du site</h1>
     <a href="<?= e(rtrim(SITE_URL, '/')) ?>" target="_blank">Voir la page d'accueil ↗</a>
   </div>
-  <nav class="admin-nav">
-    <a href="perfumes.php">Parfums</a>
-    <a href="import.php">Import API</a>
-    <a href="import-csv.php">Import CSV</a>
-    <a href="sync.php">Sync ZeParfums</a>
-    <a href="tags.php">Tags</a>
-    <a href="settings.php" class="active">Réglages</a>
-  
-    <a href="logout.php" class="admin-logout">D&eacute;connexion</a>
-  </nav>
+  <?php renderAdminNav('settings'); ?>
 
   <?php if ($message): ?><p style="color:#2f7a2f;"><?= e($message) ?></p><?php endif; ?>
 

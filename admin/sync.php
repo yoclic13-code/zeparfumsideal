@@ -142,15 +142,7 @@ $cookieMasked = $cookie !== ''
     <h1>Sync ZeParfums</h1>
     <span><?= (int)$totalPerfumes ?> parfum(s) en base</span>
   </div>
-  <nav class="admin-nav">
-    <a href="perfumes.php">Parfums</a>
-    <a href="import.php">Import API</a>
-    <a href="import-csv.php">Import CSV</a>
-    <a href="sync.php" class="active">Sync ZeParfums</a>
-    <a href="tags.php">Tags</a>
-    <a href="settings.php">Réglages</a>
-    <a href="logout.php" class="admin-logout">Déconnexion</a>
-  </nav>
+  <?php renderAdminNav('sync'); ?>
 
   <?php if ($message): ?><p style="color:#2f7a2f;"><?= e($message) ?></p><?php endif; ?>
   <?php if ($error): ?><p class="flash-error"><?= e($error) ?></p><?php endif; ?>
