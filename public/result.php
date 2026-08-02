@@ -12,6 +12,8 @@ $repo = new PerfumeRepository($db);
 $pathType = 'quiz';
 $results = [];
 $startingPerfume = null;
+$budgetExhausted = false;
+$requestedMaxPrice = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $mode = cleanInput($_POST['mode'] ?? 'quiz');
@@ -47,7 +49,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $maxPrice = (float)$catalogMin;
             }
         }
+        $requestedMaxPrice = $maxPrice;
         $results = $engine->recommendFromQuiz($answers, 3, $coffretsOnly, $maxPrice);
+
+        // Aucun match dans le budget : proposer des alternatives hors plafond.
+        if (empty($results) && $maxPrice !== null) {
+            $results = $engine->recommendFromQuiz($answers, 3, $coffretsOnly, null);
+            $budgetExhausted = !empty($results);
+        }
     }
 
     // Sauvegarde de la session en base
@@ -87,7 +96,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     redirect('index.php');
 }
 
-$pageTitle = 'Votre parfum recommandé — ' . SITE_NAME;
+$pageTitle = $budgetExhausted
+    ? 'Pas de parfum dans votre budget — ' . SITE_NAME
+    : 'Votre parfum recommandé — ' . SITE_NAME;
 require_once __DIR__ . '/../includes/header.php';
 ?>
 
@@ -102,17 +113,47 @@ require_once __DIR__ . '/../includes/header.php';
 
   <?php if (empty($results)): ?>
     <div class="result-empty">
-      <h1>Aucun résultat trouvé</h1>
-      <p>Nous n'avons pas pu déterminer de recommandation. Merci de recommencer le quiz.</p>
-      <a href="index.php" class="btn-primary">Recommencer le quiz</a>
+      <?php if ($requestedMaxPrice !== null): ?>
+        <h1>Pas de parfum dans votre budget</h1>
+        <p>
+          Aucun parfum ne correspond à vos préférences pour un plafond de
+          <strong><?= e(formatPrice($requestedMaxPrice)) ?></strong>.
+          Pensez à l’augmenter, puis relancez le quiz.
+        </p>
+        <div class="result-empty-actions">
+          <a href="quiz.php" class="btn-primary">Augmenter mon budget</a>
+          <a href="index.php" class="btn-secondary">Retour à l’accueil</a>
+        </div>
+      <?php else: ?>
+        <h1>Aucun résultat trouvé</h1>
+        <p>Nous n'avons pas pu déterminer de recommandation. Merci de recommencer le quiz.</p>
+        <a href="index.php" class="btn-primary">Recommencer le quiz</a>
+      <?php endif; ?>
     </div>
   <?php else: ?>
     <?php $main = $results[0]; $alts = array_slice($results, 1); $p = $main['perfume']; ?>
 
     <div class="result-inner">
-      <p class="eyebrow">Votre sélection</p>
-      <h1 class="result-title">Votre parfum recommandé</h1>
-      <p class="result-subtitle">D'après vos réponses, ce parfum semble être le meilleur choix pour vous.</p>
+      <?php if ($budgetExhausted): ?>
+        <p class="eyebrow">Budget trop serré</p>
+        <h1 class="result-title">Pas de parfum dans votre budget</h1>
+        <p class="result-subtitle">
+          Aucune suggestion ne reste sous
+          <strong><?= e(formatPrice($requestedMaxPrice)) ?></strong>
+          avec vos réponses. Pensez à l’augmenter —
+          en attendant, voici d’autres propositions proches de vos goûts.
+        </p>
+        <div class="budget-fallback-banner">
+          <p>
+            Ces parfums dépassent votre plafond actuel.
+            <a href="quiz.php">Relancer le quiz avec un budget plus élevé</a>
+          </p>
+        </div>
+      <?php else: ?>
+        <p class="eyebrow">Votre sélection</p>
+        <h1 class="result-title">Votre parfum recommandé</h1>
+        <p class="result-subtitle">D'après vos réponses, ce parfum semble être le meilleur choix pour vous.</p>
+      <?php endif; ?>
 
       <?= renderReferralBanner() ?>
 
@@ -126,6 +167,9 @@ require_once __DIR__ . '/../includes/header.php';
         </div>
         <div class="result-details">
           <span class="result-score">Compatibilité <?= (int)$main['percent'] ?>%</span>
+          <?php if ($budgetExhausted && !empty($p['price'])): ?>
+            <span class="budget-over-badge">Hors budget · <?= e(formatPrice($p['price'])) ?></span>
+          <?php endif; ?>
           <h2><?= e($p['name']) ?></h2>
           <p class="result-brand"><?= e($p['brand']) ?></p>
 
@@ -171,7 +215,7 @@ require_once __DIR__ . '/../includes/header.php';
       </div>
 
       <?php if (!empty($alts)): ?>
-        <h3 class="alt-title">Alternatives</h3>
+        <h3 class="alt-title"><?= $budgetExhausted ? 'Autres propositions' : 'Alternatives' ?></h3>
         <div class="alt-grid">
           <?php foreach ($alts as $alt): $ap = $alt['perfume']; ?>
             <div class="alt-card">
@@ -183,6 +227,9 @@ require_once __DIR__ . '/../includes/header.php';
                 <?php endif; ?>
               </div>
               <span class="result-score small">Compatibilité <?= (int)$alt['percent'] ?>%</span>
+              <?php if ($budgetExhausted && !empty($ap['price'])): ?>
+                <span class="budget-over-badge small">Hors budget · <?= e(formatPrice($ap['price'])) ?></span>
+              <?php endif; ?>
               <h4><?= e($ap['name']) ?></h4>
               <p class="alt-brand"><?= e($ap['brand']) ?></p>
 
