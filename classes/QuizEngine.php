@@ -119,7 +119,7 @@ class QuizEngine
         $allowCoffrets = in_array('cadeau', $answers, true);
         $coffretsOnly = $allowCoffrets && $coffretsOnly;
 
-        return $this->rankPerfumes($wantedTags, $limit, null, $requiredGender, $allowCoffrets, $coffretsOnly, $maxPrice);
+        return $this->rankPerfumes($wantedTags, $limit, null, $requiredGender, $allowCoffrets, $coffretsOnly, $maxPrice, true);
     }
 
     /**
@@ -136,9 +136,25 @@ class QuizEngine
         }
 
         $startingPerfume = $this->repo->findById($perfumeId);
-        $requiredGender = $startingPerfume['gender'] ?? null;
+        $requiredGender = $this->resolvePerfumeGender($startingPerfume ?: [], $baseTags);
 
-        return $this->rankPerfumes($wantedTags, $limit, $perfumeId, $requiredGender, false, false);
+        // Renforce le genre cible dans le scoring (au-delà du filtre strict).
+        if ($requiredGender === 'femme' || $requiredGender === 'homme') {
+            $wantedTags[$requiredGender] = ($wantedTags[$requiredGender] ?? 0) + 3.0;
+            $opposite = $requiredGender === 'femme' ? 'homme' : 'femme';
+            unset($wantedTags[$opposite]);
+        }
+
+        return $this->rankPerfumes(
+            $wantedTags,
+            $limit,
+            $perfumeId,
+            $requiredGender,
+            false,
+            false,
+            null,
+            true // strict : n'accepte pas le genre opposé
+        );
     }
 
     /**
@@ -324,7 +340,8 @@ class QuizEngine
     /**
      * Classe tous les parfums actifs selon leur score de compatibilité.
      * $requiredGender, si fourni ('homme'/'femme'), exclut strictement les parfums de l'autre
-     * genre (les parfums 'mixte' restent toujours compatibles). 'mixte' ou null n'exclut rien.
+     * genre. Les 'mixte' restent acceptés sauf si $strictGender=true (parcours parfum aimé) :
+     * dans ce cas on priorise le même genre, puis on complète avec du mixte si besoin.
      */
     private function rankPerfumes(
         array $wantedTags,
@@ -333,7 +350,8 @@ class QuizEngine
         ?string $requiredGender = null,
         bool $allowCoffrets = false,
         bool $coffretsOnly = false,
-        ?float $maxPrice = null
+        ?float $maxPrice = null,
+        bool $strictGender = false
     ): array {
         $perfumes = $this->repo->getAllActiveWithTags();
         $ranked = [];
@@ -356,7 +374,14 @@ class QuizEngine
                 continue;
             }
 
-            if (!$this->isGenderCompatible($perfume['gender'] ?? null, $requiredGender)) {
+            $perfumeTags = [];
+            foreach ($perfume['tags'] as $t) {
+                $perfumeTags[$t['name']] = (float)$t['weight'];
+            }
+
+            $effectiveGender = $this->resolvePerfumeGender($perfume, $perfumeTags);
+
+            if (!$this->isGenderCompatible($effectiveGender, $requiredGender, $strictGender)) {
                 continue;
             }
 
@@ -364,12 +389,16 @@ class QuizEngine
                 continue;
             }
 
-            $perfumeTags = [];
-            foreach ($perfume['tags'] as $t) {
-                $perfumeTags[$t['name']] = (float)$t['weight'];
-            }
-
             $score = $this->calculateScore($perfumeTags, $wantedTags);
+
+            // Bonus fort si le genre effectif correspond exactement à la cible.
+            if ($requiredGender === 'homme' || $requiredGender === 'femme') {
+                if ($effectiveGender === $requiredGender) {
+                    $score += 12.0;
+                } elseif ($effectiveGender === 'mixte') {
+                    $score -= 4.0;
+                }
+            }
 
             if ($useSocialProof) {
                 // Bonus rating : léger, ne doit pas écraser les tags de compatibilité.
@@ -398,10 +427,24 @@ class QuizEngine
                 'perfume' => $perfume,
                 'score'   => $score,
                 'tags'    => $perfumeTags,
+                'gender'  => $effectiveGender,
             ];
         }
 
         usort($ranked, fn($a, $b) => $b['score'] <=> $a['score']);
+
+        // Parcours strict : d'abord le même genre, puis mixte pour compléter.
+        if ($strictGender && in_array($requiredGender, ['homme', 'femme'], true)) {
+            $sameGender = array_values(array_filter(
+                $ranked,
+                fn($entry) => ($entry['gender'] ?? 'mixte') === $requiredGender
+            ));
+            $mixteOnly = array_values(array_filter(
+                $ranked,
+                fn($entry) => ($entry['gender'] ?? 'mixte') === 'mixte'
+            ));
+            $ranked = array_merge($sameGender, $mixteOnly);
+        }
 
         if ($allowCoffrets && !$coffretsOnly) {
             $coffretRanked = array_values(array_filter(
@@ -416,7 +459,8 @@ class QuizEngine
             $signature = $this->requestSignature($wantedTags, $excludePerfumeId, $requiredGender, $maxPrice) . '|coffret-mix';
             $top = $this->selectDiversifiedTop($merged, $limit, $signature);
         } else {
-            $signature = $this->requestSignature($wantedTags, $excludePerfumeId, $requiredGender, $maxPrice);
+            $signature = $this->requestSignature($wantedTags, $excludePerfumeId, $requiredGender, $maxPrice)
+                . ($strictGender ? '|strict-gender' : '');
             $top = $this->selectDiversifiedTop($ranked, $limit, $signature);
         }
         $maxScore = $top[0]['score'] ?? 1;
@@ -466,16 +510,97 @@ class QuizEngine
 
     /**
      * Un parfum 'homme' ne doit jamais être proposé quand on cherche 'femme', et inversement.
-     * Un parfum 'mixte' est toujours accepté ; une recherche 'mixte' (ou sans genre requis)
-     * n'exclut rien.
+     * En mode strict (parcours parfum aimé), les candidats 'mixte' ne passent qu'en secours
+     * (géré dans rankPerfumes via priorisation) — ici on les laisse passer pour le complément.
+     * En mode non-strict, mixte reste toujours compatible.
      */
-    private function isGenderCompatible(?string $candidateGender, ?string $requiredGender): bool
+    private function isGenderCompatible(?string $candidateGender, ?string $requiredGender, bool $strict = false): bool
     {
         if ($requiredGender === null || $requiredGender === 'mixte') {
             return true;
         }
 
-        return $candidateGender === $requiredGender || $candidateGender === 'mixte';
+        $candidate = $candidateGender ?: 'mixte';
+
+        if ($candidate === $requiredGender) {
+            return true;
+        }
+
+        // Genre opposé : toujours exclu.
+        if (($candidate === 'homme' || $candidate === 'femme') && $candidate !== $requiredGender) {
+            return false;
+        }
+
+        // Mixte : autorisé (pénalisé / classé après en mode strict).
+        return $candidate === 'mixte';
+    }
+
+    /**
+     * Déduit le genre réel d'un parfum (DB → tags → indices dans le nom).
+     * Nécessaire car la majorité du catalogue est encore stockée en "mixte".
+     */
+    private function resolvePerfumeGender(array $perfume, array $tags = []): string
+    {
+        $dbGender = strtolower(trim((string)($perfume['gender'] ?? '')));
+        if ($dbGender === 'homme' || $dbGender === 'femme') {
+            return $dbGender;
+        }
+
+        $femmeWeight = (float)($tags['femme'] ?? 0);
+        $hommeWeight = (float)($tags['homme'] ?? 0);
+        if ($femmeWeight > 0 || $hommeWeight > 0) {
+            if ($femmeWeight > $hommeWeight) {
+                return 'femme';
+            }
+            if ($hommeWeight > $femmeWeight) {
+                return 'homme';
+            }
+        }
+
+        $name = mb_strtolower(trim((string)($perfume['name'] ?? '')));
+        if ($name === '') {
+            return 'mixte';
+        }
+
+        $femmeMarkers = [
+            'femme', 'woman', 'women', 'for her', 'pour elle', 'girl', 'goddess',
+            'lady', 'mademoiselle', 'madame', 'blush', 'flora', 'bloom', 'idole',
+            'idôle', "j'adore", 'jadore', 'chance', 'olympea', 'olympéa',
+            'la vie est belle', 'black opium', 'good girl', 'alien', 'angel',
+            'miss dior', 'coco mademoiselle', 'poison', 'libre', 'si intense',
+            'very good girl', 'her ', ' elle',
+        ];
+        $hommeMarkers = [
+            'homme', ' man', 'men', 'for him', 'pour lui', 'gentleman', 'masculin',
+            'sauvage', 'bleu de chanel', 'acqua di gio', 'acqua di giò', 'invictus',
+            '1 million', 'million', 'ultraman', 'yves saint laurent y ',
+            ' him', ' lui', 'gentleman', 'le male', 'le mâle', 'eros',
+            'spicebomb', 'stronger with you', 'aventus',
+        ];
+
+        $femmeHit = false;
+        $hommeHit = false;
+        foreach ($femmeMarkers as $m) {
+            if (str_contains($name, $m)) {
+                $femmeHit = true;
+                break;
+            }
+        }
+        foreach ($hommeMarkers as $m) {
+            if (str_contains($name, $m)) {
+                $hommeHit = true;
+                break;
+            }
+        }
+
+        if ($femmeHit && !$hommeHit) {
+            return 'femme';
+        }
+        if ($hommeHit && !$femmeHit) {
+            return 'homme';
+        }
+
+        return 'mixte';
     }
 
     /**

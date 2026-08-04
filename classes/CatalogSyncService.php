@@ -268,12 +268,31 @@ class CatalogSyncService
     public static function detectGender(string $name): string
     {
         $lower = mb_strtolower($name);
-        if (str_contains($lower, 'homme')) {
-            return 'homme';
+
+        $femmeMarkers = [
+            'femme', 'woman', 'women', 'for her', 'pour elle', 'girl', 'goddess',
+            'lady', 'mademoiselle', 'madame', 'blush', 'flora', 'bloom', 'idole',
+            'idôle', "j'adore", 'jadore', 'chance', 'olympea', 'olympéa',
+            'la vie est belle', 'black opium', 'good girl', 'alien', 'angel',
+            'miss dior', 'coco mademoiselle', 'poison', 'libre', 'very good girl',
+        ];
+        $hommeMarkers = [
+            'homme', 'for him', 'pour lui', 'gentleman', 'masculin',
+            'sauvage', 'bleu de chanel', 'acqua di gio', 'acqua di giò', 'invictus',
+            '1 million', 'le male', 'le mâle', 'eros', 'spicebomb', 'aventus',
+        ];
+
+        foreach ($femmeMarkers as $m) {
+            if (str_contains($lower, $m)) {
+                return 'femme';
+            }
         }
-        if (str_contains($lower, 'femme')) {
-            return 'femme';
+        foreach ($hommeMarkers as $m) {
+            if (str_contains($lower, $m)) {
+                return 'homme';
+            }
         }
+
         return 'mixte';
     }
 

@@ -9,6 +9,7 @@ require_once __DIR__ . '/../config/app.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../classes/PerfumeRepository.php';
+require_once __DIR__ . '/../classes/CatalogSyncService.php';
 
 requireAdmin();
 
@@ -49,10 +50,7 @@ function detectBrand(string $name): string
 
 function detectGender(string $name): string
 {
-    $lower = mb_strtolower($name);
-    if (str_contains($lower, 'homme')) return 'homme';
-    if (str_contains($lower, 'femme')) return 'femme';
-    return 'mixte';
+    return CatalogSyncService::detectGender($name);
 }
 
 function parsePrice(string $raw): ?float
