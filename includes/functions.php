@@ -317,6 +317,56 @@ function referralDiscountedPrice(?float $price): ?float
 }
 
 /**
+ * Valeurs par défaut de la bulle « Voir conditions » sous les prix.
+ *
+ * @return array{title:string,items:string,note:string,price_label:string,trigger:string}
+ */
+function referralConditionsDefaults(): array
+{
+    return [
+        'title' => 'Conditions de parrainage :',
+        'items' => "Votre filleul obtient <strong>-{discount}%</strong> sur sa 1<sup>re</sup> commande <strong>(dès 50 € d'achat)</strong>.\n"
+            . 'Vous profitez de <strong>-{discount}% pour chaque filleul ayant passé commande</strong>.',
+        'note' => 'Compte Ze Parfums requis. Créez-le sur zeparfums.com si vous n’êtes pas encore inscrit, puis demandez votre code dans « Mon Profil ». Offre non cumulable.',
+        'price_label' => 'Parrain / Filleul',
+        'trigger' => 'Voir conditions',
+    ];
+}
+
+/**
+ * Contenu éditable de la bulle conditions (réglages admin + défauts).
+ *
+ * @return array{title:string,items:list<string>,note:string,price_label:string,trigger:string}
+ */
+function referralConditionsContent(): array
+{
+    $defaults = referralConditionsDefaults();
+    $itemsRaw = getSetting('referral_conditions_items', $defaults['items']);
+    if (trim($itemsRaw) === '') {
+        $itemsRaw = $defaults['items'];
+    }
+
+    $items = [];
+    foreach (preg_split('/\r\n|\r|\n/', $itemsRaw) ?: [] as $line) {
+        $line = trim($line);
+        if ($line !== '') {
+            $items[] = $line;
+        }
+    }
+    if ($items === []) {
+        $items = array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', $defaults['items']) ?: [])));
+    }
+
+    return [
+        'title' => trim(getSetting('referral_conditions_title', $defaults['title'])) ?: $defaults['title'],
+        'items' => $items,
+        'note' => trim(getSetting('referral_conditions_note', $defaults['note'])) ?: $defaults['note'],
+        'price_label' => trim(getSetting('referral_price_label', $defaults['price_label'])) ?: $defaults['price_label'],
+        'trigger' => trim(getSetting('referral_conditions_trigger', $defaults['trigger'])) ?: $defaults['trigger'],
+    ];
+}
+
+/**
  * Bloc HTML du prix catalogue + estimation parrainage (si activé).
  */
 function renderPerfumePriceBlock($price): string
@@ -331,19 +381,27 @@ function renderPerfumePriceBlock($price): string
     if (referralEnabled()) {
         $discount = referralDiscountAmount();
         $estimated = referralDiscountedPrice($catalogPrice);
+        $cond = referralConditionsContent();
 
         $html .= '<p class="result-price-label">Prix catalogue</p>';
         $html .= '<p class="result-price-original">' . e(formatPrice($catalogPrice)) . '</p>';
-        $html .= '<p class="result-price-label-referral">Parrain / Filleul <span class="result-price-badge-large">-' . (int)$discount . '%</span>'
-              . ' <span class="referral-info-trigger" tabindex="0" aria-label="Conditions de parrainage">Voir conditions</span></p>';
+        $html .= '<p class="result-price-label-referral">' . e($cond['price_label'])
+              . ' <span class="result-price-badge-large">-' . (int)$discount . '%</span>'
+              . ' <span class="referral-info-trigger" tabindex="0" aria-label="' . e($cond['title']) . '">'
+              . e($cond['trigger']) . '</span></p>';
         $html .= '<div class="referral-info-bubble">'
-              . '<p><strong>Conditions de parrainage :</strong></p>'
-              . '<ul>'
-              . '<li>Votre filleul obtient <strong>-' . (int)$discount . '%</strong> sur sa 1<sup>re</sup> commande <strong>(dès 50 € d\'achat)</strong>.</li>'
-              . '<li>Vous profitez de <strong>-' . (int)$discount . '% pour chaque filleul ayant passé commande</strong>.</li>'
-              . '</ul>'
-              . '<p class="referral-info-note">Compte Ze Parfums requis. Créez-le sur zeparfums.com si vous n’êtes pas encore inscrit, puis demandez votre code dans « Mon Profil ». Offre non cumulable.</p>'
-              . '</div>';
+              . '<p><strong>' . e(str_replace(['{discount}', '{DISCOUNT}'], (string)(int)$discount, $cond['title'])) . '</strong></p>';
+        if (!empty($cond['items'])) {
+            $html .= '<ul>';
+            foreach ($cond['items'] as $item) {
+                $html .= '<li>' . referralBannerRichText($item) . '</li>';
+            }
+            $html .= '</ul>';
+        }
+        if ($cond['note'] !== '') {
+            $html .= '<p class="referral-info-note">' . referralBannerRichText($cond['note']) . '</p>';
+        }
+        $html .= '</div>';
         $html .= '<p class="result-price-estimate-referral">' . e(formatPrice($estimated)) . '</p>';
     } else {
         $html .= '<p class="result-price-label">Avec Promo Ze Parfums</p>';

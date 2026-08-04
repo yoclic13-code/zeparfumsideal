@@ -16,6 +16,12 @@ $bannerDefaults = referralBannerDefaults();
 $banner = referralBannerContent();
 $showBannerBtn = $banner['show_btn'];
 $showBannerLink = $banner['show_link'];
+$conditionsDefaults = referralConditionsDefaults();
+$conditions = referralConditionsContent();
+$conditionsItemsText = getSetting('referral_conditions_items', $conditionsDefaults['items']);
+if (trim($conditionsItemsText) === '') {
+    $conditionsItemsText = $conditionsDefaults['items'];
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $opacity = max(0.0, min(1.0, (float)($_POST['hero_overlay_opacity'] ?? HERO_OVERLAY_OPACITY_DEFAULT)));
@@ -52,12 +58,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         setSetting($settingKey, $raw);
     }
 
+    $conditionFields = [
+        'referral_conditions_title' => 'title',
+        'referral_conditions_items' => 'items',
+        'referral_conditions_note' => 'note',
+        'referral_price_label' => 'price_label',
+        'referral_conditions_trigger' => 'trigger',
+    ];
+    foreach ($conditionFields as $settingKey => $field) {
+        $raw = (string)($_POST[$settingKey] ?? '');
+        $raw = trim($raw);
+        if ($raw === '') {
+            $raw = $conditionsDefaults[$field];
+        }
+        setSetting($settingKey, $raw);
+    }
+
     $referralEnabled = isset($_POST['referral_enabled']);
     $referralDiscount = max(0.0, (float)($_POST['referral_discount'] ?? REFERRAL_DISCOUNT_DEFAULT));
     $whatsappEnabled = isset($_POST['whatsapp_enabled']);
     $banner = referralBannerContent();
     $showBannerBtn = $banner['show_btn'];
     $showBannerLink = $banner['show_link'];
+    $conditions = referralConditionsContent();
+    $conditionsItemsText = getSetting('referral_conditions_items', $conditionsDefaults['items']);
+    if (trim($conditionsItemsText) === '') {
+        $conditionsItemsText = $conditionsDefaults['items'];
+    }
     $message = 'Réglages enregistrés.';
 }
 
@@ -154,8 +181,43 @@ $opacityPercent = (int)round($opacity * 100);
       </div>
 
       <p style="color:var(--gray);font-size:0.82rem;margin:0.8rem 0 0;line-height:1.5;">
-        Texte affiché sous les prix : « Parrain / Filleul -<?= (int)$referralDiscount ?>% »
+        Le pourcentage « -<?= (int)$referralDiscount ?>% » s’affiche aussi dans le badge prix et via <code>{discount}</code> dans les textes.
       </p>
+  </div>
+
+  <div class="admin-card">
+    <h2 style="margin:0 0 0.5rem;">Bulle « Voir conditions » (sous les prix)</h2>
+    <p style="color:var(--gray);margin:0 0 1.5rem;font-size:0.92rem;">
+      Texte de la vignette ouverte au clic sur « Voir conditions ».
+      Une ligne = un point de la liste. Utilisez <code>{discount}</code> pour le pourcentage.
+      Balises : <code>&lt;strong&gt;</code>, <code>&lt;em&gt;</code>, <code>&lt;br&gt;</code>, <code>&lt;sup&gt;</code>.
+    </p>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+        <div>
+          <label for="referral_price_label">Libellé prix (ex. Parrain / Filleul)</label>
+          <input type="text" id="referral_price_label" name="referral_price_label" value="<?= e($conditions['price_label']) ?>">
+        </div>
+        <div>
+          <label for="referral_conditions_trigger">Lien d’ouverture</label>
+          <input type="text" id="referral_conditions_trigger" name="referral_conditions_trigger" value="<?= e($conditions['trigger']) ?>">
+        </div>
+      </div>
+
+      <div style="margin-top:1rem;">
+        <label for="referral_conditions_title">Titre de la bulle</label>
+        <input type="text" id="referral_conditions_title" name="referral_conditions_title" value="<?= e($conditions['title']) ?>">
+      </div>
+
+      <div style="margin-top:1rem;">
+        <label for="referral_conditions_items">Points de la liste (un par ligne)</label>
+        <textarea id="referral_conditions_items" name="referral_conditions_items" rows="5"><?= e($conditionsItemsText) ?></textarea>
+      </div>
+
+      <div style="margin-top:1rem;">
+        <label for="referral_conditions_note">Note en bas de la bulle</label>
+        <textarea id="referral_conditions_note" name="referral_conditions_note" rows="3"><?= e($conditions['note']) ?></textarea>
+      </div>
   </div>
 
   <div class="admin-card">
