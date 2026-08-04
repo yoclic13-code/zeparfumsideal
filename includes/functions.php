@@ -387,7 +387,8 @@ function referralBannerDefaults(): array
  *   title:string,text1:string,text2:string,
  *   btn_label:string,btn_url:string,
  *   link_label:string,link_url:string,
- *   note:string
+ *   note:string,
+ *   show_btn:bool,show_link:bool
  * }
  */
 function referralBannerContent(): array
@@ -403,6 +404,8 @@ function referralBannerContent(): array
         'link_label' => trim(getSetting('referral_banner_link_label', $defaults['link_label'])) ?: $defaults['link_label'],
         'link_url' => sanitizeExternalUrl(getSetting('referral_banner_link_url', $defaults['link_url']), $defaults['link_url']),
         'note' => trim(getSetting('referral_banner_note', $defaults['note'])) ?: $defaults['note'],
+        'show_btn' => getSetting('referral_banner_show_btn', '1') === '1',
+        'show_link' => getSetting('referral_banner_show_link', '1') === '1',
     ];
 }
 
@@ -449,7 +452,7 @@ function zeparfumsRegisterUrl(): string
 }
 
 /**
- * Bandeau promotionnel parrainage sous les résultats.
+ * Bandeau promotionnel parrainage (placé en bas des résultats).
  */
 function renderReferralBanner(): string
 {
@@ -458,9 +461,10 @@ function renderReferralBanner(): string
     }
 
     $c = referralBannerContent();
+    $discount = (int)referralDiscountAmount();
 
-    $html = '<aside class="referral-banner" role="note">'
-        . '<p class="referral-banner-title">' . e(str_replace(['{discount}', '{DISCOUNT}'], (string)(int)referralDiscountAmount(), $c['title'])) . '</p>';
+    $html = '<aside class="referral-banner" id="offre-parrainage" role="note">'
+        . '<p class="referral-banner-title">' . e(str_replace(['{discount}', '{DISCOUNT}'], (string)$discount, $c['title'])) . '</p>';
 
     if ($c['text1'] !== '') {
         $html .= '<p class="referral-banner-text">' . referralBannerRichText($c['text1']) . '</p>';
@@ -469,16 +473,21 @@ function renderReferralBanner(): string
         $html .= '<p class="referral-banner-text">' . referralBannerRichText($c['text2']) . '</p>';
     }
 
-    $html .= '<div class="referral-banner-actions">'
-        . '<a href="' . e($c['btn_url']) . '" target="_blank" rel="noopener" class="btn-primary referral-banner-btn">'
-        . e($c['btn_label']) . '</a>';
+    $showBtn = !empty($c['show_btn']);
+    $showLink = !empty($c['show_link']) && $c['link_label'] !== '';
 
-    if ($c['link_label'] !== '') {
-        $html .= '<a href="' . e($c['link_url']) . '" target="_blank" rel="noopener" class="referral-banner-link">'
-            . e($c['link_label']) . '</a>';
+    if ($showBtn || $showLink) {
+        $html .= '<div class="referral-banner-actions">';
+        if ($showBtn) {
+            $html .= '<a href="' . e($c['btn_url']) . '" target="_blank" rel="noopener" class="btn-primary referral-banner-btn">'
+                . e($c['btn_label']) . '</a>';
+        }
+        if ($showLink) {
+            $html .= '<a href="' . e($c['link_url']) . '" target="_blank" rel="noopener" class="referral-banner-link">'
+                . e($c['link_label']) . '</a>';
+        }
+        $html .= '</div>';
     }
-
-    $html .= '</div>';
 
     if ($c['note'] !== '') {
         $html .= '<p class="referral-banner-note">' . referralBannerRichText($c['note']) . '</p>';
@@ -487,6 +496,26 @@ function renderReferralBanner(): string
     $html .= '</aside>';
 
     return $html;
+}
+
+/**
+ * Pastille discrète (mobile) : renvoie vers la vignette en bas de page.
+ */
+function renderReferralMobileTeaser(): string
+{
+    if (!referralEnabled()) {
+        return '';
+    }
+
+    $discount = (int)referralDiscountAmount();
+    $c = referralBannerContent();
+    $title = str_replace(['{discount}', '{DISCOUNT}'], (string)$discount, $c['title']);
+
+    return '<a href="#offre-parrainage" class="referral-mobile-teaser">'
+        . '<span class="referral-mobile-teaser-label">' . e($title) . '</span>'
+        . '<span class="referral-mobile-teaser-badge">-' . $discount . '%</span>'
+        . '<span class="referral-mobile-teaser-hint" aria-hidden="true">↓</span>'
+        . '</a>';
 }
 
 /**

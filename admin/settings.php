@@ -14,6 +14,8 @@ $referralDiscount = referralDiscountAmount();
 $whatsappEnabled = whatsappButtonEnabled();
 $bannerDefaults = referralBannerDefaults();
 $banner = referralBannerContent();
+$showBannerBtn = $banner['show_btn'];
+$showBannerLink = $banner['show_link'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $opacity = max(0.0, min(1.0, (float)($_POST['hero_overlay_opacity'] ?? HERO_OVERLAY_OPACITY_DEFAULT)));
@@ -24,6 +26,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     setSetting('referral_enabled', isset($_POST['referral_enabled']) ? '1' : '0');
     setSetting('referral_discount', (string)max(0.0, (float)($_POST['referral_discount'] ?? REFERRAL_DISCOUNT_DEFAULT)));
     setSetting('whatsapp_enabled', isset($_POST['whatsapp_enabled']) ? '1' : '0');
+    setSetting('referral_banner_show_btn', isset($_POST['referral_banner_show_btn']) ? '1' : '0');
+    setSetting('referral_banner_show_link', isset($_POST['referral_banner_show_link']) ? '1' : '0');
 
     $bannerFields = [
         'referral_banner_title' => 'title',
@@ -52,6 +56,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $referralDiscount = max(0.0, (float)($_POST['referral_discount'] ?? REFERRAL_DISCOUNT_DEFAULT));
     $whatsappEnabled = isset($_POST['whatsapp_enabled']);
     $banner = referralBannerContent();
+    $showBannerBtn = $banner['show_btn'];
+    $showBannerLink = $banner['show_link'];
     $message = 'Réglages enregistrés.';
 }
 
@@ -173,6 +179,17 @@ $opacityPercent = (int)round($opacity * 100);
       <div style="margin-top:1rem;">
         <label for="referral_banner_text2">Paragraphe 2</label>
         <textarea id="referral_banner_text2" name="referral_banner_text2" rows="3"><?= e($banner['text2']) ?></textarea>
+      </div>
+
+      <div style="margin-top:1.2rem;display:flex;flex-direction:column;gap:0.7rem;">
+        <label class="gift-options-check" style="margin-top:0;">
+          <input type="checkbox" name="referral_banner_show_btn" value="1" <?= $showBannerBtn ? 'checked' : '' ?>>
+          <span>Afficher le bouton « Créer mon compte »</span>
+        </label>
+        <label class="gift-options-check" style="margin-top:0;">
+          <input type="checkbox" name="referral_banner_show_link" value="1" <?= $showBannerLink ? 'checked' : '' ?>>
+          <span>Afficher le lien « Se connecter »</span>
+        </label>
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1rem;">
