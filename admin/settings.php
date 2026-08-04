@@ -12,6 +12,8 @@ $heroVideoFile = heroVideoFilename();
 $referralEnabled = referralEnabled();
 $referralDiscount = referralDiscountAmount();
 $whatsappEnabled = whatsappButtonEnabled();
+$bannerDefaults = referralBannerDefaults();
+$banner = referralBannerContent();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $opacity = max(0.0, min(1.0, (float)($_POST['hero_overlay_opacity'] ?? HERO_OVERLAY_OPACITY_DEFAULT)));
@@ -22,9 +24,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     setSetting('referral_enabled', isset($_POST['referral_enabled']) ? '1' : '0');
     setSetting('referral_discount', (string)max(0.0, (float)($_POST['referral_discount'] ?? REFERRAL_DISCOUNT_DEFAULT)));
     setSetting('whatsapp_enabled', isset($_POST['whatsapp_enabled']) ? '1' : '0');
+
+    $bannerFields = [
+        'referral_banner_title' => 'title',
+        'referral_banner_text1' => 'text1',
+        'referral_banner_text2' => 'text2',
+        'referral_banner_btn_label' => 'btn_label',
+        'referral_banner_btn_url' => 'btn_url',
+        'referral_banner_link_label' => 'link_label',
+        'referral_banner_link_url' => 'link_url',
+        'referral_banner_note' => 'note',
+    ];
+    foreach ($bannerFields as $settingKey => $field) {
+        $raw = (string)($_POST[$settingKey] ?? '');
+        if ($field === 'btn_url' || $field === 'link_url') {
+            $raw = sanitizeExternalUrl(trim($raw), $bannerDefaults[$field]);
+        } else {
+            $raw = trim($raw);
+            if ($raw === '') {
+                $raw = $bannerDefaults[$field];
+            }
+        }
+        setSetting($settingKey, $raw);
+    }
+
     $referralEnabled = isset($_POST['referral_enabled']);
     $referralDiscount = max(0.0, (float)($_POST['referral_discount'] ?? REFERRAL_DISCOUNT_DEFAULT));
     $whatsappEnabled = isset($_POST['whatsapp_enabled']);
+    $banner = referralBannerContent();
     $message = 'Réglages enregistrés.';
 }
 
@@ -121,8 +148,59 @@ $opacityPercent = (int)round($opacity * 100);
       </div>
 
       <p style="color:var(--gray);font-size:0.82rem;margin:0.8rem 0 0;line-height:1.5;">
-        Texte affiché : « Parrain / Filleul -<?= (int)$referralDiscount ?>% »
+        Texte affiché sous les prix : « Parrain / Filleul -<?= (int)$referralDiscount ?>% »
       </p>
+  </div>
+
+  <div class="admin-card">
+    <h2 style="margin:0 0 0.5rem;">Vignette parrainage (textes &amp; liens)</h2>
+    <p style="color:var(--gray);margin:0 0 1.5rem;font-size:0.92rem;">
+      Modifiez ici tout le contenu de la vignette affichée sur la page résultat.
+      Utilisez <code>{discount}</code> pour insérer automatiquement le pourcentage.
+      Balises HTML autorisées : <code>&lt;strong&gt;</code>, <code>&lt;em&gt;</code>, <code>&lt;br&gt;</code>, <code>&lt;sup&gt;</code>.
+    </p>
+
+      <div>
+        <label for="referral_banner_title">Titre</label>
+        <input type="text" id="referral_banner_title" name="referral_banner_title" value="<?= e($banner['title']) ?>">
+      </div>
+
+      <div style="margin-top:1rem;">
+        <label for="referral_banner_text1">Paragraphe 1</label>
+        <textarea id="referral_banner_text1" name="referral_banner_text1" rows="3"><?= e($banner['text1']) ?></textarea>
+      </div>
+
+      <div style="margin-top:1rem;">
+        <label for="referral_banner_text2">Paragraphe 2</label>
+        <textarea id="referral_banner_text2" name="referral_banner_text2" rows="3"><?= e($banner['text2']) ?></textarea>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1rem;">
+        <div>
+          <label for="referral_banner_btn_label">Bouton principal — libellé</label>
+          <input type="text" id="referral_banner_btn_label" name="referral_banner_btn_label" value="<?= e($banner['btn_label']) ?>">
+        </div>
+        <div>
+          <label for="referral_banner_btn_url">Bouton principal — lien</label>
+          <input type="url" id="referral_banner_btn_url" name="referral_banner_btn_url" value="<?= e($banner['btn_url']) ?>" placeholder="https://…">
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1rem;">
+        <div>
+          <label for="referral_banner_link_label">Lien secondaire — libellé</label>
+          <input type="text" id="referral_banner_link_label" name="referral_banner_link_label" value="<?= e($banner['link_label']) ?>">
+        </div>
+        <div>
+          <label for="referral_banner_link_url">Lien secondaire — lien</label>
+          <input type="url" id="referral_banner_link_url" name="referral_banner_link_url" value="<?= e($banner['link_url']) ?>" placeholder="https://…">
+        </div>
+      </div>
+
+      <div style="margin-top:1rem;">
+        <label for="referral_banner_note">Note en bas de vignette</label>
+        <textarea id="referral_banner_note" name="referral_banner_note" rows="2"><?= e($banner['note']) ?></textarea>
+      </div>
   </div>
 
   <div class="admin-card">

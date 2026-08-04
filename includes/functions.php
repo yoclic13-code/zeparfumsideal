@@ -356,11 +356,88 @@ function renderPerfumePriceBlock($price): string
 }
 
 /**
+ * Valeurs par défaut de la vignette parrainage (page résultat).
+ * Placeholders : {discount} = pourcentage de réduction.
+ *
+ * @return array{
+ *   title:string,text1:string,text2:string,
+ *   btn_label:string,btn_url:string,
+ *   link_label:string,link_url:string,
+ *   note:string
+ * }
+ */
+function referralBannerDefaults(): array
+{
+    return [
+        'title' => 'Offre parrainage Ze Parfums',
+        'text1' => 'Pour profiter de cette recommandation et de l’offre parrain / filleul <strong>-{discount}%</strong>, vous devez disposer d’un compte sur Ze Parfums.',
+        'text2' => 'Pas encore inscrit ? <strong>Créez votre compte gratuitement</strong> sur le site Ze Parfums (espace CSE), puis retrouvez votre code de parrainage dans la rubrique <strong>« Mon Profil »</strong>.',
+        'btn_label' => 'Créer mon compte',
+        'btn_url' => 'https://zeparfums.com/module/zeparfumsreg/inscription',
+        'link_label' => 'Déjà inscrit ? Se connecter',
+        'link_url' => 'https://zeparfums.com',
+        'note' => 'La réduction s’applique dès votre 1<sup>re</sup> commande (conditions détaillées sous chaque prix).',
+    ];
+}
+
+/**
+ * Contenu éditable de la vignette (réglages admin + défauts).
+ *
+ * @return array{
+ *   title:string,text1:string,text2:string,
+ *   btn_label:string,btn_url:string,
+ *   link_label:string,link_url:string,
+ *   note:string
+ * }
+ */
+function referralBannerContent(): array
+{
+    $defaults = referralBannerDefaults();
+
+    return [
+        'title' => trim(getSetting('referral_banner_title', $defaults['title'])) ?: $defaults['title'],
+        'text1' => trim(getSetting('referral_banner_text1', $defaults['text1'])) ?: $defaults['text1'],
+        'text2' => trim(getSetting('referral_banner_text2', $defaults['text2'])) ?: $defaults['text2'],
+        'btn_label' => trim(getSetting('referral_banner_btn_label', $defaults['btn_label'])) ?: $defaults['btn_label'],
+        'btn_url' => sanitizeExternalUrl(getSetting('referral_banner_btn_url', $defaults['btn_url']), $defaults['btn_url']),
+        'link_label' => trim(getSetting('referral_banner_link_label', $defaults['link_label'])) ?: $defaults['link_label'],
+        'link_url' => sanitizeExternalUrl(getSetting('referral_banner_link_url', $defaults['link_url']), $defaults['link_url']),
+        'note' => trim(getSetting('referral_banner_note', $defaults['note'])) ?: $defaults['note'],
+    ];
+}
+
+/**
+ * N’accepte que les URLs http(s) absolues.
+ */
+function sanitizeExternalUrl(string $url, string $fallback = '#'): string
+{
+    $url = trim($url);
+    if ($url === '') {
+        return $fallback;
+    }
+    if (!preg_match('#^https?://#i', $url)) {
+        return $fallback;
+    }
+    return $url;
+}
+
+/**
+ * Texte riche sécurisé pour la vignette (tags limités + {discount}).
+ */
+function referralBannerRichText(string $text): string
+{
+    $discount = (int)referralDiscountAmount();
+    $text = str_replace(['{discount}', '{DISCOUNT}'], (string)$discount, $text);
+    $text = strip_tags($text, '<strong><em><b><i><br><sup>');
+    return $text;
+}
+
+/**
  * URL boutique Ze Parfums (espace CSE).
  */
 function zeparfumsShopUrl(): string
 {
-    return 'https://zeparfums.com';
+    return referralBannerContent()['link_url'];
 }
 
 /**
@@ -368,7 +445,7 @@ function zeparfumsShopUrl(): string
  */
 function zeparfumsRegisterUrl(): string
 {
-    return zeparfumsShopUrl() . '/module/zeparfumsreg/inscription';
+    return referralBannerContent()['btn_url'];
 }
 
 /**
@@ -380,25 +457,36 @@ function renderReferralBanner(): string
         return '';
     }
 
-    $discount = (int)referralDiscountAmount();
-    $registerUrl = zeparfumsRegisterUrl();
+    $c = referralBannerContent();
 
-    return '<aside class="referral-banner" role="note">'
-        . '<p class="referral-banner-title">Offre parrainage Ze Parfums</p>'
-        . '<p class="referral-banner-text">'
-        . 'Pour profiter de cette recommandation et de l’offre parrain / filleul '
-        . '<strong>-' . $discount . '%</strong>, vous devez disposer d’un compte sur Ze Parfums.'
-        . '</p>'
-        . '<p class="referral-banner-text">'
-        . 'Pas encore inscrit ? <strong>Créez votre compte gratuitement</strong> sur le site Ze Parfums '
-        . '(espace CSE), puis retrouvez votre code de parrainage dans la rubrique <strong>« Mon Profil »</strong>.'
-        . '</p>'
-        . '<div class="referral-banner-actions">'
-        . '<a href="' . e($registerUrl) . '" target="_blank" rel="noopener" class="btn-primary referral-banner-btn">Créer mon compte</a>'
-        . '<a href="' . e(zeparfumsShopUrl()) . '" target="_blank" rel="noopener" class="referral-banner-link">Déjà inscrit ? Se connecter</a>'
-        . '</div>'
-        . '<p class="referral-banner-note">La réduction s’applique dès votre 1<sup>re</sup> commande (conditions détaillées sous chaque prix).</p>'
-        . '</aside>';
+    $html = '<aside class="referral-banner" role="note">'
+        . '<p class="referral-banner-title">' . e(str_replace(['{discount}', '{DISCOUNT}'], (string)(int)referralDiscountAmount(), $c['title'])) . '</p>';
+
+    if ($c['text1'] !== '') {
+        $html .= '<p class="referral-banner-text">' . referralBannerRichText($c['text1']) . '</p>';
+    }
+    if ($c['text2'] !== '') {
+        $html .= '<p class="referral-banner-text">' . referralBannerRichText($c['text2']) . '</p>';
+    }
+
+    $html .= '<div class="referral-banner-actions">'
+        . '<a href="' . e($c['btn_url']) . '" target="_blank" rel="noopener" class="btn-primary referral-banner-btn">'
+        . e($c['btn_label']) . '</a>';
+
+    if ($c['link_label'] !== '') {
+        $html .= '<a href="' . e($c['link_url']) . '" target="_blank" rel="noopener" class="referral-banner-link">'
+            . e($c['link_label']) . '</a>';
+    }
+
+    $html .= '</div>';
+
+    if ($c['note'] !== '') {
+        $html .= '<p class="referral-banner-note">' . referralBannerRichText($c['note']) . '</p>';
+    }
+
+    $html .= '</aside>';
+
+    return $html;
 }
 
 /**
