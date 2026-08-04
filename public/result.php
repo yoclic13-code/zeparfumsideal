@@ -152,7 +152,7 @@ require_once __DIR__ . '/../includes/header.php';
       <?php else: ?>
         <p class="eyebrow">Votre sélection</p>
         <h1 class="result-title">Votre parfum recommandé</h1>
-        <p class="result-subtitle">D'après vos réponses, ce parfum semble être le meilleur choix pour vous.</p>
+        <p class="result-subtitle">D'après vos réponses, ce parfum semble être le meilleur choix pour vous.<?php if (referralEnabled()): ?> Pour commander et profiter des tarifs CSE, créez un compte sur Ze Parfums si vous n’êtes pas encore inscrit.<?php endif; ?></p>
       <?php endif; ?>
 
       <?= renderReferralBanner() ?>

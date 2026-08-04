@@ -342,7 +342,7 @@ function renderPerfumePriceBlock($price): string
               . '<li>Votre filleul obtient <strong>-' . (int)$discount . '%</strong> sur sa 1<sup>re</sup> commande <strong>(dès 50 € d\'achat)</strong>.</li>'
               . '<li>Vous profitez de <strong>-' . (int)$discount . '% pour chaque filleul ayant passé commande</strong>.</li>'
               . '</ul>'
-              . '<p class="referral-info-note">Offre non cumulable, sur présentation du code parrainage.</p>'
+              . '<p class="referral-info-note">Compte Ze Parfums requis. Créez-le sur zeparfums.com si vous n’êtes pas encore inscrit, puis demandez votre code dans « Mon Profil ». Offre non cumulable.</p>'
               . '</div>';
         $html .= '<p class="result-price-estimate-referral">' . e(formatPrice($estimated)) . '</p>';
     } else {
@@ -356,6 +356,22 @@ function renderPerfumePriceBlock($price): string
 }
 
 /**
+ * URL boutique Ze Parfums (espace CSE).
+ */
+function zeparfumsShopUrl(): string
+{
+    return 'https://zeparfums.com';
+}
+
+/**
+ * Page d'inscription Ze Parfums (compte CSE requis pour commander).
+ */
+function zeparfumsRegisterUrl(): string
+{
+    return zeparfumsShopUrl() . '/module/zeparfumsreg/inscription';
+}
+
+/**
  * Bandeau promotionnel parrainage sous les résultats.
  */
 function renderReferralBanner(): string
@@ -365,11 +381,23 @@ function renderReferralBanner(): string
     }
 
     $discount = (int)referralDiscountAmount();
+    $registerUrl = zeparfumsRegisterUrl();
 
     return '<aside class="referral-banner" role="note">'
         . '<p class="referral-banner-title">Offre parrainage Ze Parfums</p>'
-        . '<p class="referral-banner-text">Demandez votre code de parrainage, disponible dans la rubrique <strong>« Mon Profil »</strong>, '
-        . 'et obtenez <strong>-' . $discount . '% de réduction</strong> pour le parrain et le filleul dès la 1<sup>re</sup> commande.</p>'
+        . '<p class="referral-banner-text">'
+        . 'Pour profiter de cette recommandation et de l’offre parrain / filleul '
+        . '<strong>-' . $discount . '%</strong>, vous devez disposer d’un compte sur Ze Parfums.'
+        . '</p>'
+        . '<p class="referral-banner-text">'
+        . 'Pas encore inscrit ? <strong>Créez votre compte gratuitement</strong> sur le site Ze Parfums '
+        . '(espace CSE), puis retrouvez votre code de parrainage dans la rubrique <strong>« Mon Profil »</strong>.'
+        . '</p>'
+        . '<div class="referral-banner-actions">'
+        . '<a href="' . e($registerUrl) . '" target="_blank" rel="noopener" class="btn-primary referral-banner-btn">Créer mon compte</a>'
+        . '<a href="' . e(zeparfumsShopUrl()) . '" target="_blank" rel="noopener" class="referral-banner-link">Déjà inscrit ? Se connecter</a>'
+        . '</div>'
+        . '<p class="referral-banner-note">La réduction s’applique dès votre 1<sup>re</sup> commande (conditions détaillées sous chaque prix).</p>'
         . '</aside>';
 }
 
