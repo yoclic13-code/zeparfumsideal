@@ -548,23 +548,23 @@ class PerfumeRepository
     }
 
     /**
-     * Recalcule et corrige le genre de tous les parfums (tags + nom).
-     * @return array{updated:int,total:int,femme:int,homme:int,mixte:int}
+     * Recalcule et corrige le genre de tous les parfums (tags + nom + héritage ligne).
+     * @return array{updated:int,total:int,femme:int,homme:int,mixte:int,inherited:int}
      */
     public function reclassifyAllGenders(): array
     {
         require_once __DIR__ . '/GenderClassifier.php';
 
         $rows = $this->db->query(
-            "SELECT id, name, gender FROM perfumes"
+            "SELECT id, name, brand, gender FROM perfumes"
         )->fetchAll(PDO::FETCH_ASSOC);
 
         $update = $this->db->prepare(
             "UPDATE perfumes SET gender = :gender, updated_at = NOW() WHERE id = :id"
         );
 
+        $resolvedById = [];
         $updated = 0;
-        $counts = ['femme' => 0, 'homme' => 0, 'mixte' => 0];
 
         foreach ($rows as $row) {
             $tagRows = $this->getTagsForPerfume((int)$row['id']);
@@ -573,19 +573,54 @@ class PerfumeRepository
                 $tagWeights[$t['name']] = (float)$t['weight'];
             }
 
-            $resolved = GenderClassifier::resolve(
+            $resolvedById[(int)$row['id']] = GenderClassifier::resolve(
                 (string)$row['name'],
                 $tagWeights,
                 $row['gender'] ?? null
             );
+        }
 
+        // Héritage : un coffret « mixte » reprend le genre d’un flacon de la même ligne.
+        $lineIndex = [];
+        foreach ($rows as $row) {
+            $id = (int)$row['id'];
+            $g = $resolvedById[$id] ?? 'mixte';
+            if ($g !== 'homme' && $g !== 'femme') {
+                continue;
+            }
+            $key = mb_strtolower(trim((string)($row['brand'] ?? ''))) . '|'
+                . GenderClassifier::lineKey((string)$row['name'], $row['brand'] ?? null);
+            if ($key === '|' || str_ends_with($key, '|')) {
+                continue;
+            }
+            $lineIndex[$key] = $g;
+        }
+
+        $inherited = 0;
+        foreach ($rows as $row) {
+            $id = (int)$row['id'];
+            if (($resolvedById[$id] ?? 'mixte') !== 'mixte') {
+                continue;
+            }
+            $key = mb_strtolower(trim((string)($row['brand'] ?? ''))) . '|'
+                . GenderClassifier::lineKey((string)$row['name'], $row['brand'] ?? null);
+            if (isset($lineIndex[$key])) {
+                $resolvedById[$id] = $lineIndex[$key];
+                $inherited++;
+            }
+        }
+
+        $counts = ['femme' => 0, 'homme' => 0, 'mixte' => 0];
+        foreach ($rows as $row) {
+            $id = (int)$row['id'];
+            $resolved = $resolvedById[$id] ?? 'mixte';
             $counts[$resolved] = ($counts[$resolved] ?? 0) + 1;
 
             $current = strtolower(trim((string)($row['gender'] ?? '')));
             if ($current !== $resolved) {
                 $update->execute([
                     'gender' => $resolved,
-                    'id' => (int)$row['id'],
+                    'id' => $id,
                 ]);
                 $updated++;
             }
@@ -597,6 +632,38 @@ class PerfumeRepository
             'femme' => $counts['femme'],
             'homme' => $counts['homme'],
             'mixte' => $counts['mixte'],
+            'inherited' => $inherited,
         ];
+    }
+
+    /**
+     * Met à jour uniquement le genre + tag genre associé.
+     */
+    public function updateGenderOnly(int $id, string $gender): void
+    {
+        if (!in_array($gender, ['homme', 'femme', 'mixte'], true)) {
+            return;
+        }
+        $stmt = $this->db->prepare(
+            "UPDATE perfumes SET gender = :gender, updated_at = NOW() WHERE id = :id"
+        );
+        $stmt->execute(['gender' => $gender, 'id' => $id]);
+    }
+
+    /**
+     * @return list<array{id:int,name:string,brand:?string,gender:string}>
+     */
+    public function getMixtePerfumes(int $limit = 50, int $offset = 0): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT id, name, brand, gender FROM perfumes
+             WHERE is_active = 1 AND LOWER(TRIM(gender)) = 'mixte'
+             ORDER BY id ASC
+             LIMIT :limit OFFSET :offset"
+        );
+        $stmt->bindValue('limit', $limit, PDO::PARAM_INT);
+        $stmt->bindValue('offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 }

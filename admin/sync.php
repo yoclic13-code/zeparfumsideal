@@ -90,7 +90,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = 'Genres corrigés : ' . (int)$fix['updated'] . ' mis à jour sur ' . (int)$fix['total']
                 . ' — femme ' . (int)$fix['femme']
                 . ', homme ' . (int)$fix['homme']
-                . ', mixte ' . (int)$fix['mixte'] . '.';
+                . ', mixte ' . (int)$fix['mixte']
+                . ' (héritage ligne : ' . (int)($fix['inherited'] ?? 0) . ').';
+        } catch (Throwable $e) {
+            $error = $e->getMessage();
+        }
+    }
+
+    if ($action === 'enrich_genders_api') {
+        try {
+            require_once __DIR__ . '/../classes/PerfumApiClient.php';
+            require_once __DIR__ . '/../classes/ImportService.php';
+            $limit = max(1, min(100, (int)($_POST['gender_limit'] ?? 40)));
+            $offset = max(0, (int)($_POST['gender_offset'] ?? 0));
+            $fix = (new ImportService(getDb()))->enrichGendersFromApiSearch($limit, $offset);
+            $message = 'Enrichissement genres via PerfumAPI : '
+                . (int)$fix['updated'] . ' mis à jour, '
+                . (int)$fix['skipped'] . ' sans match, '
+                . (int)$fix['errors'] . ' erreur(s) '
+                . 'sur ' . (int)$fix['checked'] . ' mixte(s) (offset ' . $offset . '). '
+                . 'Relancez avec offset ' . ($offset + $limit) . ' pour continuer.';
         } catch (Throwable $e) {
             $error = $e->getMessage();
         }
@@ -268,9 +287,22 @@ $cookieMasked = $cookie !== ''
         <button type="submit" name="action" value="reclassify_genders" class="btn-primary" style="background:#5a4a6b;">
           Corriger les genres (H/F/Mixte)
         </button>
+        <button type="submit" name="action" value="enrich_genders_api" class="btn-primary" style="background:#3d5a80;">
+          Enrichir genres via PerfumAPI
+        </button>
         <?php if ($cookie !== ''): ?>
           <button type="submit" name="action" value="clear_cookie" class="btn-primary" style="background:#a33;">Effacer le cookie</button>
         <?php endif; ?>
+      </div>
+      <div style="display:flex;gap:0.8rem;flex-wrap:wrap;margin-top:0.8rem;align-items:end;">
+        <div>
+          <label>Offset mixte (API genres)</label>
+          <input type="number" name="gender_offset" value="0" min="0" style="width:8rem;">
+        </div>
+        <div>
+          <label>Limite / lot</label>
+          <input type="number" name="gender_limit" value="40" min="1" max="100" style="width:8rem;">
+        </div>
       </div>
     </form>
     <script>
@@ -293,7 +325,8 @@ $cookieMasked = $cookie !== ''
       <li>Fonctionne sur o2switch sans <code>pip</code> / Python.</li>
       <li>Le cookie donne accès à votre session CSE : ne le partagez pas.</li>
       <li>Après sync, lancez <a href="import.php">Import API → enrichissement</a> pour les notes / quiz.</li>
-      <li>Le bouton <strong>Corriger les genres</strong> reclasse homme / femme / mixte à partir des tags et du nom (ex. Alien → femme, Sauvage → homme).</li>
+      <li>Le bouton <strong>Corriger les genres</strong> reclasse homme / femme / mixte à partir des tags et du nom (ex. Alien → femme, MYSLF / Sauvage → homme), et fait hériter le genre aux coffrets de la même ligne.</li>
+      <li>Le bouton <strong>Enrichir genres via PerfumAPI</strong> interroge votre instance PerfumAPI (Men/Women/Unisex) pour chaque référence encore mixte — par lots. Remplissez d’abord l’API (scrape Fragrantica → PerfumAPI), sinon le lot ne trouvera rien.</li>
       <li>Le bouton <strong>Corriger les prix (TTC)</strong> convertit les anciens prix HT et les écarts d’1 centime (ex. 46,91 → 46,90).</li>
     </ul>
   </div>

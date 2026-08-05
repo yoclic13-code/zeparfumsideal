@@ -81,6 +81,8 @@ class ImportService
     private const NAME_FILLER_WORDS = [
         'eau', 'de', 'du', 'la', 'le', 'des', 'pour', 'edp', 'edt',
         'ml', 'vaporisateur', 'naturelle', 'rechargeable',
+        'coffret', 'coffrets', 'set', 'kit', 'cadeau', 'gift', 'recharge',
+        'toilette', 'parfum', 'intense', 'absolu', 'elixir', 'flacon',
     ];
 
     /**
@@ -127,6 +129,130 @@ class ImportService
         $union = array_unique(array_merge($setA, $setB));
 
         return count($union) > 0 ? count($intersection) / count($union) : 0.0;
+    }
+
+    /**
+     * Pour chaque parfum encore « mixte », interroge PerfumAPI (search) et applique le genre
+     * officiel Men/Women/Unisex. À lancer par lots (offset/limit) pour respecter le rate-limit.
+     *
+     * @return array{checked:int,updated:int,skipped:int,errors:int}
+     */
+    public function enrichGendersFromApiSearch(int $limit = 40, int $offset = 0): array
+    {
+        require_once __DIR__ . '/GenderClassifier.php';
+
+        $rows = $this->repo->getMixtePerfumes($limit, $offset);
+        $checked = 0;
+        $updated = 0;
+        $skipped = 0;
+        $errors = 0;
+
+        foreach ($rows as $row) {
+            $checked++;
+            $query = GenderClassifier::searchQuery(
+                (string)$row['name'],
+                isset($row['brand']) ? (string)$row['brand'] : null
+            );
+            if ($query === '') {
+                $skipped++;
+                continue;
+            }
+
+            try {
+                $raw = $this->api->searchPerfume($query, 8);
+                $items = $this->extractList($raw);
+                if ($items === []) {
+                    // Repli : ligne seule sans marque
+                    $lineOnly = GenderClassifier::lineKey(
+                        (string)$row['name'],
+                        isset($row['brand']) ? (string)$row['brand'] : null
+                    );
+                    if ($lineOnly !== '' && $lineOnly !== $query) {
+                        $raw = $this->api->searchPerfume($lineOnly, 8);
+                        $items = $this->extractList($raw);
+                    }
+                }
+
+                if ($items === []) {
+                    $skipped++;
+                    usleep(200000);
+                    continue;
+                }
+
+                $localKey = GenderClassifier::lineKey(
+                    (string)$row['name'],
+                    isset($row['brand']) ? (string)$row['brand'] : null
+                );
+                $best = null;
+                $bestScore = 0.0;
+                foreach ($items as $item) {
+                    $normalized = $this->normalize($item);
+                    $apiKey = GenderClassifier::lineKey(
+                        (string)$normalized['name'],
+                        $normalized['brand'] ?? null
+                    );
+                    $score = $this->wordOverlapScore(
+                        $localKey !== '' ? explode(' ', $localKey) : [],
+                        $apiKey !== '' ? explode(' ', $apiKey) : []
+                    );
+                    if ($score > $bestScore) {
+                        $bestScore = $score;
+                        $best = $normalized;
+                    }
+                }
+
+                if (!$best || $bestScore < 0.34) {
+                    $skipped++;
+                    usleep(200000);
+                    continue;
+                }
+
+                $gender = $best['gender'] ?? 'mixte';
+                if (!in_array($gender, ['homme', 'femme', 'mixte'], true)) {
+                    $skipped++;
+                    continue;
+                }
+
+                if ($gender === 'mixte') {
+                    $skipped++;
+                    usleep(150000);
+                    continue;
+                }
+
+                $this->repo->updateGenderOnly((int)$row['id'], $gender);
+
+                // Aligne le tag genre sans écraser les autres tags olfactifs.
+                $existingTags = $this->repo->getTagsForPerfume((int)$row['id']);
+                $tagMap = [];
+                foreach ($existingTags as $t) {
+                    $n = strtolower((string)$t['name']);
+                    if ($n === 'homme' || $n === 'femme' || $n === 'mixte') {
+                        continue;
+                    }
+                    $tagMap[$t['name']] = (float)$t['weight'];
+                }
+                $tagMap[$gender] = 2.0;
+                $payload = [];
+                foreach ($tagMap as $name => $weight) {
+                    $payload[] = ['name' => $name, 'weight' => $weight];
+                }
+                if ($payload !== []) {
+                    $this->repo->setTags((int)$row['id'], $payload);
+                }
+
+                $updated++;
+                usleep(250000);
+            } catch (Throwable $e) {
+                $errors++;
+            }
+        }
+
+        return [
+            'checked' => $checked,
+            'updated' => $updated,
+            'skipped' => $skipped,
+            'errors' => $errors,
+        ];
     }
 
     /**
