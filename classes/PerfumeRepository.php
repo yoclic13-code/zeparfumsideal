@@ -357,6 +357,24 @@ class PerfumeRepository
         }
 
         $whereSql = $where ? 'WHERE ' . implode(' AND ', $where) : '';
+
+        $countStmt = $this->db->prepare("SELECT COUNT(*) FROM perfumes $whereSql");
+        foreach ($params as $k => $v) {
+            $countStmt->bindValue($k, $v);
+        }
+        $countStmt->execute();
+        $total = (int)$countStmt->fetchColumn();
+
+        // Export / listing complet : pas de pagination.
+        if ($perPage <= 0) {
+            $stmt = $this->db->prepare("SELECT * FROM perfumes $whereSql ORDER BY brand ASC, name ASC");
+            foreach ($params as $k => $v) {
+                $stmt->bindValue($k, $v);
+            }
+            $stmt->execute();
+            return ['items' => $stmt->fetchAll(), 'total' => $total];
+        }
+
         $offset = ($page - 1) * $perPage;
 
         $stmt = $this->db->prepare("SELECT * FROM perfumes $whereSql ORDER BY updated_at DESC LIMIT :limit OFFSET :offset");
@@ -367,13 +385,6 @@ class PerfumeRepository
         $stmt->bindValue('offset', $offset, PDO::PARAM_INT);
         $stmt->execute();
         $items = $stmt->fetchAll();
-
-        $countStmt = $this->db->prepare("SELECT COUNT(*) FROM perfumes $whereSql");
-        foreach ($params as $k => $v) {
-            $countStmt->bindValue($k, $v);
-        }
-        $countStmt->execute();
-        $total = (int)$countStmt->fetchColumn();
 
         return ['items' => $items, 'total' => $total];
     }

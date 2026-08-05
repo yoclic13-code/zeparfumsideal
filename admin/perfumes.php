@@ -17,10 +17,42 @@ $filters = [
     'is_active' => array_key_exists('is_active', $_GET) ? ($_GET['is_active'] ?? '') : '1',
 ];
 
+// Export CSV des lignes correspondant aux filtres (toutes pages).
+if (isset($_GET['export']) && $_GET['export'] === 'csv') {
+    $export = $repo->listForAdmin($filters, 1, 0);
+    $filename = 'parfums-export-' . date('Y-m-d-His') . '.csv';
+
+    header('Content-Type: text/csv; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Pragma: no-cache');
+    header('Expires: 0');
+
+    $out = fopen('php://output', 'w');
+    // BOM UTF-8 pour Excel
+    fwrite($out, "\xEF\xBB\xBF");
+    fputcsv($out, ['id', 'name', 'brand', 'gender', 'price', 'is_active', 'product_url'], ';');
+
+    foreach ($export['items'] as $row) {
+        fputcsv($out, [
+            (int)$row['id'],
+            (string)($row['name'] ?? ''),
+            (string)($row['brand'] ?? ''),
+            (string)($row['gender'] ?? 'mixte'),
+            $row['price'] !== null && $row['price'] !== '' ? (string)$row['price'] : '',
+            (int)($row['is_active'] ?? 0),
+            (string)($row['product_url'] ?? ''),
+        ], ';');
+    }
+
+    fclose($out);
+    exit;
+}
+
 $page = max(1, (int)($_GET['page'] ?? 1));
 $data = $repo->listForAdmin($filters, $page, 20);
 $brands = $repo->distinctBrands();
 $totalPages = max(1, (int)ceil($data['total'] / 20));
+$exportQuery = http_build_query(array_merge($filters, ['export' => 'csv']));
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -71,8 +103,15 @@ $totalPages = max(1, (int)ceil($data['total'] / 20));
           <option value="0" <?= $filters['is_active']==='0'?'selected':'' ?>>Inactif</option>
         </select>
       </div>
-      <div style="grid-column:1/-1;">
+      <div style="grid-column:1/-1;display:flex;flex-wrap:wrap;gap:0.6rem;align-items:center;">
         <button type="submit" class="btn-secondary small">Filtrer</button>
+        <a href="?<?= e($exportQuery) ?>" class="btn-primary small" style="text-decoration:none;display:inline-block;">
+          Exporter CSV (<?= (int)$data['total'] ?>)
+        </a>
+        <span style="color:var(--gray);font-size:0.85rem;">
+          Respecte les filtres ci-dessus. Colonnes : id;name;brand;gender;… — corrigez <code>gender</code> puis réimportez via
+          <a href="import-csv.php">Import CSV → genres</a>.
+        </span>
       </div>
     </form>
   </div>
