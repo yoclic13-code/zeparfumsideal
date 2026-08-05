@@ -66,6 +66,7 @@ class GenderClassifier
         'chanel coco', 'chanel allure', 'chanel n',
         'la tulipe', 'inflorescence', 'lil fleur',
         'bowtastic', 'rose cruise',
+        'this is her', 'this is her!', 'zadig this is her',
     ];
 
     private const HOMME_MARKERS = [
@@ -95,6 +96,7 @@ class GenderClassifier
         'pasha', 'mister marvelous', 'ch men', 'carolina herrera men',
         'brit for men', 'london for men', 'touch for men', 'weekend for men',
         'burberry for men',
+        'this is him', 'this is him!', 'zadig this is him',
     ];
 
     /**
@@ -277,17 +279,19 @@ class GenderClassifier
     {
         $hasUomo = (bool)preg_match('/\buomo\b/u', $lower);
         $hasDonna = (bool)preg_match('/\bdonna\b/u', $lower);
-        $hasMen = str_contains($lower, 'for men')
-            || str_contains($lower, 'pour homme')
-            || str_contains($lower, 'pour lui')
-            || str_contains($lower, 'for him')
-            || (bool)preg_match('/\bmen\b/u', $lower);
         $hasWomen = str_contains($lower, 'for women')
             || str_contains($lower, 'pour femme')
             || str_contains($lower, 'pour elle')
             || str_contains($lower, 'for her')
+            || str_contains($lower, 'this is her')
             || (bool)preg_match('/\bwomen\b/u', $lower)
             || (bool)preg_match('/\bwoman\b/u', $lower);
+        $hasMen = str_contains($lower, 'for men')
+            || str_contains($lower, 'pour homme')
+            || str_contains($lower, 'pour lui')
+            || str_contains($lower, 'for him')
+            || str_contains($lower, 'this is him')
+            || (bool)preg_match('/\bmen\b/u', $lower);
 
         // « Wanted Girl » : girl ≠ men
         if (str_contains($lower, 'girl') && !$hasUomo && !$hasMen) {
