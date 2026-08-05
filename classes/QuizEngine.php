@@ -536,71 +536,16 @@ class QuizEngine
     }
 
     /**
-     * Déduit le genre réel d'un parfum (DB → tags → indices dans le nom).
-     * Nécessaire car la majorité du catalogue est encore stockée en "mixte".
+     * Déduit le genre réel d'un parfum (tags → nom → genre stocké).
      */
     private function resolvePerfumeGender(array $perfume, array $tags = []): string
     {
-        $dbGender = strtolower(trim((string)($perfume['gender'] ?? '')));
-        if ($dbGender === 'homme' || $dbGender === 'femme') {
-            return $dbGender;
-        }
-
-        $femmeWeight = (float)($tags['femme'] ?? 0);
-        $hommeWeight = (float)($tags['homme'] ?? 0);
-        if ($femmeWeight > 0 || $hommeWeight > 0) {
-            if ($femmeWeight > $hommeWeight) {
-                return 'femme';
-            }
-            if ($hommeWeight > $femmeWeight) {
-                return 'homme';
-            }
-        }
-
-        $name = mb_strtolower(trim((string)($perfume['name'] ?? '')));
-        if ($name === '') {
-            return 'mixte';
-        }
-
-        $femmeMarkers = [
-            'femme', 'woman', 'women', 'for her', 'pour elle', 'girl', 'goddess',
-            'lady', 'mademoiselle', 'madame', 'blush', 'flora', 'bloom', 'idole',
-            'idôle', "j'adore", 'jadore', 'chance', 'olympea', 'olympéa',
-            'la vie est belle', 'black opium', 'good girl', 'alien', 'angel',
-            'miss dior', 'coco mademoiselle', 'poison', 'libre', 'si intense',
-            'very good girl', 'her ', ' elle',
-        ];
-        $hommeMarkers = [
-            'homme', ' man', 'men', 'for him', 'pour lui', 'gentleman', 'masculin',
-            'sauvage', 'bleu de chanel', 'acqua di gio', 'acqua di giò', 'invictus',
-            '1 million', 'million', 'ultraman', 'yves saint laurent y ',
-            ' him', ' lui', 'gentleman', 'le male', 'le mâle', 'eros',
-            'spicebomb', 'stronger with you', 'aventus',
-        ];
-
-        $femmeHit = false;
-        $hommeHit = false;
-        foreach ($femmeMarkers as $m) {
-            if (str_contains($name, $m)) {
-                $femmeHit = true;
-                break;
-            }
-        }
-        foreach ($hommeMarkers as $m) {
-            if (str_contains($name, $m)) {
-                $hommeHit = true;
-                break;
-            }
-        }
-
-        if ($femmeHit && !$hommeHit) {
-            return 'femme';
-        }
-        if ($hommeHit && !$femmeHit) {
-            return 'homme';
-        }
-
-        return 'mixte';
+        require_once __DIR__ . '/GenderClassifier.php';
+        return GenderClassifier::resolve(
+            (string)($perfume['name'] ?? ''),
+            $tags,
+            isset($perfume['gender']) ? (string)$perfume['gender'] : null
+        );
     }
 
     /**

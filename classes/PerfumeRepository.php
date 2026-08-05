@@ -546,4 +546,57 @@ class PerfumeRepository
 
         return ['groups' => $groupCount, 'deactivated' => $deactivated];
     }
+
+    /**
+     * Recalcule et corrige le genre de tous les parfums (tags + nom).
+     * @return array{updated:int,total:int,femme:int,homme:int,mixte:int}
+     */
+    public function reclassifyAllGenders(): array
+    {
+        require_once __DIR__ . '/GenderClassifier.php';
+
+        $rows = $this->db->query(
+            "SELECT id, name, gender FROM perfumes"
+        )->fetchAll(PDO::FETCH_ASSOC);
+
+        $update = $this->db->prepare(
+            "UPDATE perfumes SET gender = :gender, updated_at = NOW() WHERE id = :id"
+        );
+
+        $updated = 0;
+        $counts = ['femme' => 0, 'homme' => 0, 'mixte' => 0];
+
+        foreach ($rows as $row) {
+            $tagRows = $this->getTagsForPerfume((int)$row['id']);
+            $tagWeights = [];
+            foreach ($tagRows as $t) {
+                $tagWeights[$t['name']] = (float)$t['weight'];
+            }
+
+            $resolved = GenderClassifier::resolve(
+                (string)$row['name'],
+                $tagWeights,
+                $row['gender'] ?? null
+            );
+
+            $counts[$resolved] = ($counts[$resolved] ?? 0) + 1;
+
+            $current = strtolower(trim((string)($row['gender'] ?? '')));
+            if ($current !== $resolved) {
+                $update->execute([
+                    'gender' => $resolved,
+                    'id' => (int)$row['id'],
+                ]);
+                $updated++;
+            }
+        }
+
+        return [
+            'updated' => $updated,
+            'total' => count($rows),
+            'femme' => $counts['femme'],
+            'homme' => $counts['homme'],
+            'mixte' => $counts['mixte'],
+        ];
+    }
 }

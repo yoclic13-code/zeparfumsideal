@@ -83,6 +83,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = $e->getMessage();
         }
     }
+
+    if ($action === 'reclassify_genders') {
+        try {
+            $fix = (new PerfumeRepository(getDb()))->reclassifyAllGenders();
+            $message = 'Genres corrigés : ' . (int)$fix['updated'] . ' mis à jour sur ' . (int)$fix['total']
+                . ' — femme ' . (int)$fix['femme']
+                . ', homme ' . (int)$fix['homme']
+                . ', mixte ' . (int)$fix['mixte'] . '.';
+        } catch (Throwable $e) {
+            $error = $e->getMessage();
+        }
+    }
 }
 
 $totalPerfumes = 0;
@@ -146,6 +158,7 @@ function runZeparfumsScrapeSync(string $cookie, string $categories): array
     $dedupe = $repo->dedupeZeparfumsByPrestashopId();
     $deactivated = $repo->deactivateMissingZeparfums($seenPsIds);
     $priceFix = $repo->normalizeAllPrices();
+    $genderFix = $repo->reclassifyAllGenders();
 
     setSetting('zeparfums_last_sync_at', date('c'));
     setSetting('zeparfums_last_sync_count', (string)count($products));
@@ -160,6 +173,10 @@ function runZeparfumsScrapeSync(string $cookie, string $categories): array
         'dedupe_deactivated' => $dedupe['deactivated'],
         'orphans_deactivated' => $deactivated,
         'prices_fixed' => $priceFix['updated'],
+        'genders_fixed' => $genderFix['updated'],
+        'gender_femme' => $genderFix['femme'],
+        'gender_homme' => $genderFix['homme'],
+        'gender_mixte' => $genderFix['mixte'],
         'active_after' => $repo->countActive(),
         'categories' => $data['categories'] ?? [],
         'auth' => 'cookie',
@@ -204,6 +221,7 @@ $cookieMasked = $cookie !== ''
       Doublons désactivés : <?= (int)($report['dedupe_deactivated'] ?? 0) ?>
       (<?= (int)($report['dedupe_groups'] ?? 0) ?> groupes) —
       absents du catalogue : <?= (int)($report['orphans_deactivated'] ?? 0) ?> —
+      genres corrigés : <?= (int)($report['genders_fixed'] ?? 0) ?> —
       actifs après sync : <strong><?= (int)($report['active_after'] ?? 0) ?></strong>.
     </p>
   </div>
@@ -247,6 +265,9 @@ $cookieMasked = $cookie !== ''
         <button type="submit" name="action" value="cleanup_catalog" class="btn-primary" style="background:#6b5b4a;">
           Nettoyer doublons
         </button>
+        <button type="submit" name="action" value="reclassify_genders" class="btn-primary" style="background:#5a4a6b;">
+          Corriger les genres (H/F/Mixte)
+        </button>
         <?php if ($cookie !== ''): ?>
           <button type="submit" name="action" value="clear_cookie" class="btn-primary" style="background:#a33;">Effacer le cookie</button>
         <?php endif; ?>
@@ -272,6 +293,7 @@ $cookieMasked = $cookie !== ''
       <li>Fonctionne sur o2switch sans <code>pip</code> / Python.</li>
       <li>Le cookie donne accès à votre session CSE : ne le partagez pas.</li>
       <li>Après sync, lancez <a href="import.php">Import API → enrichissement</a> pour les notes / quiz.</li>
+      <li>Le bouton <strong>Corriger les genres</strong> reclasse homme / femme / mixte à partir des tags et du nom (ex. Alien → femme, Sauvage → homme).</li>
       <li>Le bouton <strong>Corriger les prix (TTC)</strong> convertit les anciens prix HT et les écarts d’1 centime (ex. 46,91 → 46,90).</li>
     </ul>
   </div>
