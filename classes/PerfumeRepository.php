@@ -576,11 +576,12 @@ class PerfumeRepository
             $resolvedById[(int)$row['id']] = GenderClassifier::resolve(
                 (string)$row['name'],
                 $tagWeights,
-                $row['gender'] ?? null
+                $row['gender'] ?? null,
+                isset($row['brand']) ? (string)$row['brand'] : null
             );
         }
 
-        // Héritage : un coffret « mixte » reprend le genre d’un flacon de la même ligne.
+        // Héritage exact : même brand + lineKey.
         $lineIndex = [];
         foreach ($rows as $row) {
             $id = (int)$row['id'];
@@ -588,12 +589,40 @@ class PerfumeRepository
             if ($g !== 'homme' && $g !== 'femme') {
                 continue;
             }
-            $key = mb_strtolower(trim((string)($row['brand'] ?? ''))) . '|'
-                . GenderClassifier::lineKey((string)$row['name'], $row['brand'] ?? null);
+            $brand = mb_strtolower(trim((string)($row['brand'] ?? '')));
+            $key = $brand . '|' . GenderClassifier::lineKey((string)$row['name'], $row['brand'] ?? null);
             if ($key === '|' || str_ends_with($key, '|')) {
                 continue;
             }
             $lineIndex[$key] = $g;
+        }
+
+        // Héritage souple : même brand + lineBase (coffret « Born In Roma » ← Donna).
+        $baseVotes = [];
+        foreach ($rows as $row) {
+            $id = (int)$row['id'];
+            $g = $resolvedById[$id] ?? 'mixte';
+            if ($g !== 'homme' && $g !== 'femme') {
+                continue;
+            }
+            $brand = mb_strtolower(trim((string)($row['brand'] ?? '')));
+            $base = GenderClassifier::lineBase((string)$row['name'], $row['brand'] ?? null);
+            if ($base === '') {
+                continue;
+            }
+            $bk = $brand . '|' . $base;
+            $baseVotes[$bk][$g] = ($baseVotes[$bk][$g] ?? 0) + 1;
+        }
+        $baseIndex = [];
+        foreach ($baseVotes as $bk => $votes) {
+            $h = (int)($votes['homme'] ?? 0);
+            $f = (int)($votes['femme'] ?? 0);
+            // Unanimité uniquement (évite Born In Roma homme+femme → pas d’héritage).
+            if ($h > 0 && $f === 0) {
+                $baseIndex[$bk] = 'homme';
+            } elseif ($f > 0 && $h === 0) {
+                $baseIndex[$bk] = 'femme';
+            }
         }
 
         $inherited = 0;
@@ -602,10 +631,17 @@ class PerfumeRepository
             if (($resolvedById[$id] ?? 'mixte') !== 'mixte') {
                 continue;
             }
-            $key = mb_strtolower(trim((string)($row['brand'] ?? ''))) . '|'
-                . GenderClassifier::lineKey((string)$row['name'], $row['brand'] ?? null);
+            $brand = mb_strtolower(trim((string)($row['brand'] ?? '')));
+            $key = $brand . '|' . GenderClassifier::lineKey((string)$row['name'], $row['brand'] ?? null);
             if (isset($lineIndex[$key])) {
                 $resolvedById[$id] = $lineIndex[$key];
+                $inherited++;
+                continue;
+            }
+            $base = GenderClassifier::lineBase((string)$row['name'], $row['brand'] ?? null);
+            $bk = $brand . '|' . $base;
+            if ($base !== '' && isset($baseIndex[$bk])) {
+                $resolvedById[$id] = $baseIndex[$bk];
                 $inherited++;
             }
         }

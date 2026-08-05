@@ -544,7 +544,8 @@ class QuizEngine
         return GenderClassifier::resolve(
             (string)($perfume['name'] ?? ''),
             $tags,
-            isset($perfume['gender']) ? (string)$perfume['gender'] : null
+            isset($perfume['gender']) ? (string)$perfume['gender'] : null,
+            isset($perfume['brand']) ? (string)$perfume['brand'] : null
         );
     }
 

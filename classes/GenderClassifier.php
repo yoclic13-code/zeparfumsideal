@@ -17,10 +17,29 @@ class GenderClassifier
         'the', 'and', 'with', 'by',
     ];
 
+    /**
+     * Marques quasi exclusivement féminines (sauf si token homme explicite).
+     * @var array<string,string>
+     */
+    private const BRAND_DEFAULTS = [
+        'lolita lempicka' => 'femme',
+        'lolita' => 'femme',
+        'lancôme' => 'femme',
+        'lancome' => 'femme',
+        'nina ricci' => 'femme',
+        'chloé' => 'femme',
+        'chloe' => 'femme',
+        'marc jacobs' => 'femme',
+        'escada' => 'femme',
+        'jimmy choo' => 'femme',
+        'elie saab' => 'femme',
+        'carolina herrera' => 'femme', // CH Men géré via marqueurs homme
+    ];
+
     /** Indices forts dans le nom (priorité haute). */
     private const FEMME_MARKERS = [
-        'pour femme', 'for her', 'pour elle', 'woman', 'women', 'femme',
-        'mademoiselle', 'madame', 'lady', 'girl', 'goddess',
+        'pour femme', 'for her', 'pour elle', 'for women', 'woman', 'women', 'femme',
+        'mademoiselle', 'madame', 'lady', 'girl', 'goddess', 'donna',
         'good girl', 'very good girl', 'miss dior', 'coco mademoiselle',
         'la vie est belle', 'black opium', 'j\'adore', 'jadore', 'idole', 'idôle',
         'olympea', 'olympéa', 'chanel chance', 'gucci bloom', 'bloom gucci',
@@ -32,14 +51,26 @@ class GenderClassifier
         'elixir des merveilles', 'twilly', 'jour d\'hermes', 'jour d\'hermès',
         'delina', 'delina exclusif', 'baccarat rouge',
         'ariana grande cloud', 'prada candy', 'prada paradoxe', 'paradoxe intense',
-        'giorgio armani my way', 'chanel gabrielle', 'n°5', 'n° 5', 'chanel n°19',
+        'giorgio armani my way', 'my way', 'chanel gabrielle',
         'coco noir', 'allure sensuelle', 'chance eau tendre', 'chance eau vive',
         'white linen', 'clinique happy', 'bvlgari omnia', 'bulgari omnia',
         'mon guerlain', 'shalimar', 'innocent', 'amor amor',
+        // Valentino / Lolita / designer femme
+        'born in roma', 'born in roma coral fantasy', 'born in roma yellow dream',
+        'born in roma green stravaganza', 'voce viva', 'valentina',
+        'mon premier', 'lolitaland', 'lolita lempicka',
+        'wanted girl', 'wanted tonic girl',
+        'burberry her', 'her london dream', 'la bomba',
+        'baiser vole', 'baiser volé', 'loulou', 'ella ella', 'ciao bella',
+        'in love with you', 'rose alexandrie', 'rose d\'arabie',
+        'chanel coco', 'chanel allure', 'chanel n',
+        'la tulipe', 'inflorescence', 'lil fleur',
+        'bowtastic', 'rose cruise',
     ];
 
     private const HOMME_MARKERS = [
-        'pour homme', 'for him', 'pour lui', 'gentleman', 'masculin', 'homme',
+        'pour homme', 'for him', 'pour lui', 'for men', 'gentleman', 'masculin', 'homme',
+        'uomo',
         'sauvage', 'bleu de chanel', 'acqua di gio', 'acqua di giò',
         'invictus', '1 million', 'one million', 'le male', 'le mâle',
         'versace eros', 'spicebomb', 'creed aventus', 'aventus',
@@ -47,12 +78,11 @@ class GenderClassifier
         'homme intense', 'homme sport', 'kouros', 'fahrenheit', 'farenheit',
         'terre d\'hermes', 'terre d\'hermès', 'habit rouge', 'eau sauvage',
         'polo blue', 'polo red', 'arman code', 'armani code',
-        'montblanc legend', 'ultra male', 'ultramale', 'azzaro wanted',
+        'montblanc legend', 'ultra male', 'ultramale',
         'azzaro chrome', 'cool water', 'davidoff cool water',
         'obsession for men', 'ck one shock for him',
         'givenchy gentleman', 'l\'homme', 'lhomme',
         'ysl y ', 'yves saint laurent y ',
-        // Lignes récentes souvent en « mixte » à tort (ex. coffrets)
         'myslf', 'myself', ' ysl y', 'y edp', 'y eau',
         'the one for men', 'light blue forever', 'light blue pour homme',
         'acqua di gio profondo', 'armani code cologne',
@@ -61,50 +91,92 @@ class GenderClassifier
         'born in roma uomo', 'valentino uomo',
         'spicebomb extreme', 'la nuit de l\'homme', 'la nuit de lhomme',
         'y le parfum', 'y eau de parfum',
+        'the most wanted', 'forever wanted', 'wanted by night',
+        'pasha', 'mister marvelous', 'ch men', 'carolina herrera men',
+        'brit for men', 'london for men', 'touch for men', 'weekend for men',
+        'burberry for men',
     ];
 
     /**
      * Déduit le genre à partir du nom seul.
      */
-    public static function fromName(string $name): string
+    public static function fromName(string $name, ?string $brand = null): string
     {
         $lower = mb_strtolower(trim($name));
         if ($lower === '') {
             return 'mixte';
         }
 
-        $femme = self::nameHits($lower, self::FEMME_MARKERS);
-        $homme = self::nameHits($lower, self::HOMME_MARKERS);
+        // 1) Tokens explicites (donna / uomo / for men…) — priorité absolue.
+        $explicit = self::explicitGender($lower);
+        if ($explicit !== null) {
+            return $explicit;
+        }
 
-        if ($femme && !$homme) {
+        // Born In Roma : Uomo/EDT → homme, Donna/EDP → femme (coffrets inclus).
+        if (str_contains($lower, 'born in roma')) {
+            if (str_contains($lower, 'toilette')) {
+                return 'homme';
+            }
             return 'femme';
         }
-        if ($homme && !$femme) {
-            return 'homme';
+
+        // 2) Chanel N°5 / N°19 même avec caractères bizarres (N░5).
+        if (str_contains($lower, 'chanel') && preg_match('/\bn[\W_]?(5|19)\b/u', $lower)) {
+            return 'femme';
         }
 
-        // Conflit rare : garder mixte.
+        $femmeHits = self::matchingMarkers($lower, self::FEMME_MARKERS);
+        $hommeHits = self::matchingMarkers($lower, self::HOMME_MARKERS);
+
+        if ($femmeHits !== [] && $hommeHits === []) {
+            return 'femme';
+        }
+        if ($hommeHits !== [] && $femmeHits === []) {
+            return 'homme';
+        }
+        if ($femmeHits !== [] && $hommeHits !== []) {
+            // « Wanted Girl » vs marqueurs Wanted homme.
+            if (str_contains($lower, 'girl') && !preg_match('/\buomo\b|\bmen\b|for men|pour homme/u', $lower)) {
+                return 'femme';
+            }
+            // Le marqueur le plus long gagne (ex. « born in roma uomo » > « born in roma »).
+            $bestF = max(array_map('strlen', $femmeHits));
+            $bestH = max(array_map('strlen', $hommeHits));
+            if ($bestH > $bestF) {
+                return 'homme';
+            }
+            if ($bestF > $bestH) {
+                return 'femme';
+            }
+            return 'mixte';
+        }
+
+        // 3) Défaut marque (ex. Lolita Lempicka → femme).
+        $brandGender = self::brandDefault($brand, $name);
+        if ($brandGender !== null) {
+            return $brandGender;
+        }
+
         return 'mixte';
     }
 
     /**
-     * Déduit le genre : tags olfactifs > indices nom > genre DB existant.
+     * Déduit le genre : nom (fort) > tags > défaut marque > genre DB.
      *
      * @param array<string,float|int> $tagWeights
      */
-    public static function resolve(string $name, array $tagWeights = [], ?string $currentGender = null): string
+    public static function resolve(string $name, array $tagWeights = [], ?string $currentGender = null, ?string $brand = null): string
     {
-        $fromName = self::fromName($name);
+        $fromName = self::fromName($name, $brand);
 
         $femmeTag = (float)($tagWeights['femme'] ?? 0);
         $hommeTag = (float)($tagWeights['homme'] ?? 0);
 
-        // Nom explicite (ex. MYSLF, Sauvage) prime sur des tags absents / ambigus.
         if ($fromName === 'femme' || $fromName === 'homme') {
             if ($femmeTag <= 0 && $hommeTag <= 0) {
                 return $fromName;
             }
-            // Tag fort opposé au nom → on fait confiance au tag API.
             if ($fromName === 'femme' && $hommeTag > $femmeTag + 0.5) {
                 return 'homme';
             }
@@ -149,8 +221,7 @@ class GenderClassifier
             $brandLower = mb_strtolower(trim($brand));
             $s = preg_replace('/^' . preg_quote($brandLower, '/') . '\b\s*/u', '', $s, 1) ?? $s;
             $s = preg_replace('/\s*\b' . preg_quote($brandLower, '/') . '$/u', '', $s, 1) ?? $s;
-            // Marques courtes fréquentes dans le titre
-            foreach (['ysl', 'yves saint laurent', 'dior', 'chanel', 'rabanne', 'paco rabanne'] as $alias) {
+            foreach (['ysl', 'yves saint laurent', 'dior', 'chanel', 'rabanne', 'paco rabanne', 'valentino', 'lolita lempicka'] as $alias) {
                 $s = preg_replace('/\b' . preg_quote($alias, '/') . '\b/u', ' ', $s) ?? $s;
             }
         }
@@ -175,6 +246,21 @@ class GenderClassifier
     }
 
     /**
+     * Base de ligne sans donna/uomo/variantes pour héritage coffret → flacon.
+     */
+    public static function lineBase(string $name, ?string $brand = null): string
+    {
+        $key = self::lineKey($name, $brand);
+        $drop = ['donna', 'uomo', 'men', 'women', 'her', 'him', 'girl', 'boy'];
+        $words = array_values(array_filter(
+            explode(' ', $key),
+            static fn(string $w): bool => $w !== '' && !in_array($w, $drop, true)
+        ));
+        // Garde les 4 premiers mots significatifs (ex. born in roma …).
+        return implode(' ', array_slice($words, 0, 4));
+    }
+
+    /**
      * Requête de recherche tierce (PerfumAPI / web) : marque + ligne sans « coffret ».
      */
     public static function searchQuery(string $name, ?string $brand = null): string
@@ -187,16 +273,75 @@ class GenderClassifier
         return $line !== '' ? $line : trim($name);
     }
 
-    /**
-     * @param list<string> $markers
-     */
-    private static function nameHits(string $haystack, array $markers): bool
+    private static function explicitGender(string $lower): ?string
     {
-        foreach ($markers as $marker) {
-            if ($marker !== '' && str_contains($haystack, $marker)) {
-                return true;
+        $hasUomo = (bool)preg_match('/\buomo\b/u', $lower);
+        $hasDonna = (bool)preg_match('/\bdonna\b/u', $lower);
+        $hasMen = str_contains($lower, 'for men')
+            || str_contains($lower, 'pour homme')
+            || str_contains($lower, 'pour lui')
+            || str_contains($lower, 'for him')
+            || (bool)preg_match('/\bmen\b/u', $lower);
+        $hasWomen = str_contains($lower, 'for women')
+            || str_contains($lower, 'pour femme')
+            || str_contains($lower, 'pour elle')
+            || str_contains($lower, 'for her')
+            || (bool)preg_match('/\bwomen\b/u', $lower)
+            || (bool)preg_match('/\bwoman\b/u', $lower);
+
+        // « Wanted Girl » : girl ≠ men
+        if (str_contains($lower, 'girl') && !$hasUomo && !$hasMen) {
+            // ne pas court-circuiter ici : laissé aux marqueurs femme
+        }
+
+        if ($hasUomo && !$hasDonna) {
+            return 'homme';
+        }
+        if ($hasDonna && !$hasUomo) {
+            return 'femme';
+        }
+        if ($hasMen && !$hasWomen) {
+            return 'homme';
+        }
+        if ($hasWomen && !$hasMen) {
+            return 'femme';
+        }
+
+        return null;
+    }
+
+    private static function brandDefault(?string $brand, string $name): ?string
+    {
+        $hay = mb_strtolower(trim(($brand ?? '') . ' ' . $name));
+        foreach (self::BRAND_DEFAULTS as $needle => $gender) {
+            if (str_contains($hay, $needle)) {
+                // Exception CH Men / Carolina Herrera men
+                if ($gender === 'femme' && (
+                    str_contains($hay, ' men')
+                    || str_contains($hay, 'uomo')
+                    || str_contains($hay, 'for him')
+                    || str_contains($hay, 'pour homme')
+                )) {
+                    return 'homme';
+                }
+                return $gender;
             }
         }
-        return false;
+        return null;
+    }
+
+    /**
+     * @param list<string> $markers
+     * @return list<string>
+     */
+    private static function matchingMarkers(string $haystack, array $markers): array
+    {
+        $hits = [];
+        foreach ($markers as $marker) {
+            if ($marker !== '' && str_contains($haystack, $marker)) {
+                $hits[] = $marker;
+            }
+        }
+        return $hits;
     }
 }
