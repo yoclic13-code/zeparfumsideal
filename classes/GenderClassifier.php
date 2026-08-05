@@ -34,6 +34,8 @@ class GenderClassifier
         'jimmy choo' => 'femme',
         'elie saab' => 'femme',
         'carolina herrera' => 'femme', // CH Men géré via marqueurs homme
+        'narciso rodriguez' => 'femme',
+        'disney' => 'femme',
     ];
 
     /** Indices forts dans le nom (priorité haute). */
@@ -67,6 +69,12 @@ class GenderClassifier
         'la tulipe', 'inflorescence', 'lil fleur',
         'bowtastic', 'rose cruise',
         'this is her', 'this is her!', 'zadig this is her',
+        'poudrée', 'poudree', 'narciso poudr',
+        'barenia', 'irresistible', 'givenchy irresistible',
+        'divine', 'gaultier divine',
+        'reine des neiges', 'frozen',
+        'jardin sur le nil', 'un jardin sur le nil',
+        'l\'eau pure', 'leau pure',
     ];
 
     private const HOMME_MARKERS = [
@@ -75,7 +83,8 @@ class GenderClassifier
         'sauvage', 'bleu de chanel', 'acqua di gio', 'acqua di giò',
         'invictus', '1 million', 'one million', 'le male', 'le mâle',
         'versace eros', 'spicebomb', 'creed aventus', 'aventus',
-        'stronger with you', 'dior homme', 'prada luna rossa', 'luna rossa',
+        'stronger with you', 'dior homme', 'prada luna rossa', 'luna rossa', 'luna rosa',
+        'luna rosa océan', 'luna rosa ocean', 'luna rossa ocean', 'luna rossa océan',
         'homme intense', 'homme sport', 'kouros', 'fahrenheit', 'farenheit',
         'terre d\'hermes', 'terre d\'hermès', 'habit rouge', 'eau sauvage',
         'polo blue', 'polo red', 'arman code', 'armani code',
@@ -87,7 +96,8 @@ class GenderClassifier
         'myslf', 'myself', ' ysl y', 'y edp', 'y eau',
         'the one for men', 'light blue forever', 'light blue pour homme',
         'acqua di gio profondo', 'armani code cologne',
-        'montblanc explorer', 'legend spirit',
+        'montblanc explorer', 'explorer platinium', 'explorer platinum',
+        'legend spirit',
         'pacorabanne phantom', 'rabanne phantom', 'paco rabanne phantom',
         'born in roma uomo', 'valentino uomo',
         'spicebomb extreme', 'la nuit de l\'homme', 'la nuit de lhomme',
@@ -97,6 +107,9 @@ class GenderClassifier
         'brit for men', 'london for men', 'touch for men', 'weekend for men',
         'burberry for men',
         'this is him', 'this is him!', 'zadig this is him',
+        'bottled', 'boss bottled', 'hugo boss bottled',
+        'only the brave', 'fuel for life', 'diesel fuel for life',
+        'le beau', 'gaultier le beau', 'jean paul gaultier le beau',
     ];
 
     /**
@@ -115,21 +128,34 @@ class GenderClassifier
             return $explicit;
         }
 
+        // Indices sur une version sans « coffret » (sinon marque + coffret casse les motifs).
+        $matchHaystack = self::stripPackagingTokens($lower);
+
         // Born In Roma : Uomo/EDT → homme, Donna/EDP → femme (coffrets inclus).
-        if (str_contains($lower, 'born in roma')) {
-            if (str_contains($lower, 'toilette')) {
+        if (str_contains($matchHaystack, 'born in roma')) {
+            if (str_contains($matchHaystack, 'toilette')) {
+                return 'homme';
+            }
+            return 'femme';
+        }
+
+        // JPG Scandal : EDT (souvent Pour Homme) vs EDP femme.
+        if (str_contains($matchHaystack, 'scandal')
+            && (str_contains($matchHaystack, 'gaultier') || str_contains($matchHaystack, 'jean paul'))
+        ) {
+            if (str_contains($matchHaystack, 'toilette') && !str_contains($matchHaystack, 'intense')) {
                 return 'homme';
             }
             return 'femme';
         }
 
         // 2) Chanel N°5 / N°19 même avec caractères bizarres (N░5).
-        if (str_contains($lower, 'chanel') && preg_match('/\bn[\W_]?(5|19)\b/u', $lower)) {
+        if (str_contains($matchHaystack, 'chanel') && preg_match('/\bn[\W_]?(5|19)\b/u', $matchHaystack)) {
             return 'femme';
         }
 
-        $femmeHits = self::matchingMarkers($lower, self::FEMME_MARKERS);
-        $hommeHits = self::matchingMarkers($lower, self::HOMME_MARKERS);
+        $femmeHits = self::matchingMarkers($matchHaystack, self::FEMME_MARKERS);
+        $hommeHits = self::matchingMarkers($matchHaystack, self::HOMME_MARKERS);
 
         if ($femmeHits !== [] && $hommeHits === []) {
             return 'femme';
@@ -273,6 +299,19 @@ class GenderClassifier
             return $brandClean . ' ' . $line;
         }
         return $line !== '' ? $line : trim($name);
+    }
+
+    /**
+     * Retire coffret / déo / etc. pour que « Marque Coffret Ligne » matche encore « Marque Ligne ».
+     */
+    private static function stripPackagingTokens(string $lower): string
+    {
+        $s = preg_replace(
+            '/\b(coffret|coffrets|set|kit|cadeau|gift|recharge|refill|miniature|miniatures|deo|déo|deodorant|déodorant)\b/u',
+            ' ',
+            $lower
+        ) ?? $lower;
+        return trim(preg_replace('/\s+/u', ' ', $s) ?? $s);
     }
 
     private static function explicitGender(string $lower): ?string
