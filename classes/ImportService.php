@@ -132,6 +132,139 @@ class ImportService
     }
 
     /**
+     * Enrichit les genres « mixte » via Fragrantica (Algolia, champ spol).
+     *
+     * @return array{checked:int,updated:int,skipped:int,errors:int,unisex:int}
+     */
+    public function enrichGendersFromFragrantica(int $limit = 40, int $offset = 0): array
+    {
+        require_once __DIR__ . '/GenderClassifier.php';
+        require_once __DIR__ . '/FragranticaClient.php';
+
+        $client = new FragranticaClient();
+        $rows = $this->repo->getMixtePerfumes($limit, $offset);
+
+        $checked = 0;
+        $updated = 0;
+        $skipped = 0;
+        $errors = 0;
+        $unisex = 0;
+
+        foreach ($rows as $row) {
+            $checked++;
+            $query = GenderClassifier::searchQuery(
+                (string)$row['name'],
+                isset($row['brand']) ? (string)$row['brand'] : null
+            );
+            if ($query === '') {
+                $skipped++;
+                continue;
+            }
+
+            try {
+                $hits = $client->search($query, 8);
+                if ($hits === []) {
+                    $lineOnly = GenderClassifier::lineKey(
+                        (string)$row['name'],
+                        isset($row['brand']) ? (string)$row['brand'] : null
+                    );
+                    if ($lineOnly !== '' && $lineOnly !== $query) {
+                        $hits = $client->search($lineOnly, 8);
+                    }
+                }
+
+                if ($hits === []) {
+                    $skipped++;
+                    usleep(150000);
+                    continue;
+                }
+
+                $localKey = GenderClassifier::lineKey(
+                    (string)$row['name'],
+                    isset($row['brand']) ? (string)$row['brand'] : null
+                );
+                $localWords = $localKey !== '' ? explode(' ', $localKey) : [];
+
+                $best = null;
+                $bestScore = 0.0;
+                foreach ($hits as $hit) {
+                    $norm = $client->normalizeHit($hit);
+                    $apiKey = GenderClassifier::lineKey(
+                        (string)($norm['name'] ?? ''),
+                        $norm['brand'] ?? null
+                    );
+                    $score = $this->wordOverlapScore(
+                        $localWords,
+                        $apiKey !== '' ? explode(' ', $apiKey) : []
+                    );
+                    // Bonus si marque proche
+                    $localBrand = mb_strtolower(trim((string)($row['brand'] ?? '')));
+                    $apiBrand = mb_strtolower(trim((string)($norm['brand'] ?? '')));
+                    if ($localBrand !== '' && $apiBrand !== '' && (
+                        str_contains($apiBrand, $localBrand) || str_contains($localBrand, $apiBrand)
+                    )) {
+                        $score += 0.15;
+                    }
+                    if ($score > $bestScore) {
+                        $bestScore = $score;
+                        $best = $norm;
+                    }
+                }
+
+                if (!$best || $bestScore < 0.34 || empty($best['gender'])) {
+                    $skipped++;
+                    usleep(120000);
+                    continue;
+                }
+
+                if ($best['gender'] === 'mixte') {
+                    $unisex++;
+                    $skipped++;
+                    usleep(100000);
+                    continue;
+                }
+
+                $this->repo->updateGenderOnly((int)$row['id'], $best['gender']);
+
+                $existingTags = $this->repo->getTagsForPerfume((int)$row['id']);
+                $tagMap = [];
+                foreach ($existingTags as $t) {
+                    $n = strtolower((string)$t['name']);
+                    if (in_array($n, ['homme', 'femme', 'mixte'], true)) {
+                        continue;
+                    }
+                    $tagMap[$t['name']] = (float)$t['weight'];
+                }
+                $tagMap[$best['gender']] = 2.0;
+                $payload = [];
+                foreach ($tagMap as $name => $weight) {
+                    $payload[] = ['name' => $name, 'weight' => $weight];
+                }
+                if ($payload !== []) {
+                    $this->repo->setTags((int)$row['id'], $payload);
+                }
+
+                $updated++;
+                usleep(200000);
+            } catch (Throwable $e) {
+                $errors++;
+                // Si Cloudflare bloque la clé, inutile de marteler tout le lot.
+                if (str_contains($e->getMessage(), 'Cloudflare') || str_contains($e->getMessage(), 'Clé')) {
+                    break;
+                }
+            }
+        }
+
+        return [
+            'checked' => $checked,
+            'updated' => $updated,
+            'skipped' => $skipped,
+            'errors' => $errors,
+            'unisex' => $unisex,
+        ];
+    }
+
+    /**
      * Pour chaque parfum encore « mixte », interroge PerfumAPI (search) et applique le genre
      * officiel Men/Women/Unisex. À lancer par lots (offset/limit) pour respecter le rate-limit.
      *

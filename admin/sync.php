@@ -114,6 +114,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = $e->getMessage();
         }
     }
+
+    if ($action === 'enrich_genders_fragrantica') {
+        try {
+            require_once __DIR__ . '/../classes/ImportService.php';
+            require_once __DIR__ . '/../classes/FragranticaClient.php';
+            $limit = max(1, min(80, (int)($_POST['gender_limit'] ?? 40)));
+            $offset = max(0, (int)($_POST['gender_offset'] ?? 0));
+            @set_time_limit(0);
+            $fix = (new ImportService(getDb()))->enrichGendersFromFragrantica($limit, $offset);
+            $message = 'Enrichissement genres via Fragrantica : '
+                . (int)$fix['updated'] . ' mis à jour, '
+                . (int)$fix['unisex'] . ' unisex laissés mixte, '
+                . (int)$fix['skipped'] . ' sans match, '
+                . (int)$fix['errors'] . ' erreur(s) '
+                . 'sur ' . (int)$fix['checked'] . ' (offset ' . $offset . '). '
+                . 'Continuer avec offset ' . ($offset + $limit) . '.';
+        } catch (Throwable $e) {
+            $error = $e->getMessage();
+        }
+    }
 }
 
 $totalPerfumes = 0;
@@ -290,6 +310,9 @@ $cookieMasked = $cookie !== ''
         <button type="submit" name="action" value="enrich_genders_api" class="btn-primary" style="background:#3d5a80;">
           Enrichir genres via PerfumAPI
         </button>
+        <button type="submit" name="action" value="enrich_genders_fragrantica" class="btn-primary" style="background:#8b4513;">
+          Enrichir genres via Fragrantica
+        </button>
         <?php if ($cookie !== ''): ?>
           <button type="submit" name="action" value="clear_cookie" class="btn-primary" style="background:#a33;">Effacer le cookie</button>
         <?php endif; ?>
@@ -326,6 +349,7 @@ $cookieMasked = $cookie !== ''
       <li>Le cookie donne accès à votre session CSE : ne le partagez pas.</li>
       <li>Après sync, lancez <a href="import.php">Import API → enrichissement</a> pour les notes / quiz.</li>
       <li>Le bouton <strong>Corriger les genres</strong> reclasse homme / femme / mixte à partir des tags et du nom (ex. Alien → femme, MYSLF / Sauvage → homme), et fait hériter le genre aux coffrets de la même ligne.</li>
+      <li>Le bouton <strong>Enrichir genres via Fragrantica</strong> interroge Algolia Fragrantica (genre officiel male/female/unisex) pour chaque mixte restant — par lots. Préférable à PerfumAPI si celle-ci est vide.</li>
       <li>Le bouton <strong>Enrichir genres via PerfumAPI</strong> interroge votre instance PerfumAPI (Men/Women/Unisex) pour chaque référence encore mixte — par lots. Remplissez d’abord l’API (scrape Fragrantica → PerfumAPI), sinon le lot ne trouvera rien.</li>
       <li>Le bouton <strong>Corriger les prix (TTC)</strong> convertit les anciens prix HT et les écarts d’1 centime (ex. 46,91 → 46,90).</li>
     </ul>
