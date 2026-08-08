@@ -446,7 +446,22 @@ class ImportService
             $normalized = $this->normalize($item);
             $apiWords = $this->coreWords($normalized['name'], $normalized['brand']);
             $brandKey = mb_strtolower(trim((string)$normalized['brand']));
-            $candidates = $byBrand[$brandKey] ?? $catalog;
+
+            $candidates = $byBrand[$brandKey] ?? [];
+            if ($candidates === [] && $brandKey !== '') {
+                // Rabanne ↔ Paco Rabanne, Armani ↔ Giorgio Armani, etc.
+                foreach ($byBrand as $localBrand => $rows) {
+                    if ($localBrand === '') {
+                        continue;
+                    }
+                    if (str_contains($brandKey, $localBrand) || str_contains($localBrand, $brandKey)) {
+                        $candidates = array_merge($candidates, $rows);
+                    }
+                }
+            }
+            if ($candidates === []) {
+                $candidates = $catalog;
+            }
 
             $bestMatch = null;
             $bestScore = 0.0;
