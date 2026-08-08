@@ -389,6 +389,138 @@ class ImportService
     }
 
     /**
+     * Scrape une marque via PerfumAPI puis enrichit le catalogue local avec la réponse
+     * (notes / accords / tags), même si Supabase PerfumAPI est vide.
+     *
+     * @return array{brand:string,scraped:int,matched:int,message:string}
+     */
+    public function scrapeBrandAndEnrich(string $brandName, int $limit = 15): array
+    {
+        $brandName = trim($brandName);
+        if ($brandName === '') {
+            throw new InvalidArgumentException('Marque vide.');
+        }
+
+        $raw = $this->api->scrapeBrand($brandName, $limit);
+        $items = [];
+        if (isset($raw['perfumes']) && is_array($raw['perfumes'])) {
+            $items = $raw['perfumes'];
+        } else {
+            $items = $this->extractList($raw);
+        }
+
+        $this->appendToLocalCache($items);
+
+        $matched = $this->enrichFromNormalizedItems($items);
+
+        return [
+            'brand' => $brandName,
+            'scraped' => count($items),
+            'matched' => $matched,
+            'message' => (string)($raw['message'] ?? ''),
+        ];
+    }
+
+    /**
+     * Enrichit depuis une liste brute PerfumAPI/Fragrantica (réponse scrape ou JSON).
+     * @param list<array> $items
+     */
+    public function enrichFromNormalizedItems(array $items, float $threshold = 0.34): int
+    {
+        if ($items === []) {
+            return 0;
+        }
+
+        $catalog = $this->repo->getAllActiveWithTags();
+        $byBrand = [];
+        foreach ($catalog as $p) {
+            $brandKey = mb_strtolower(trim($p['brand'] ?? ''));
+            $byBrand[$brandKey][] = $p;
+        }
+
+        $matched = 0;
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $normalized = $this->normalize($item);
+            $apiWords = $this->coreWords($normalized['name'], $normalized['brand']);
+            $brandKey = mb_strtolower(trim((string)$normalized['brand']));
+            $candidates = $byBrand[$brandKey] ?? $catalog;
+
+            $bestMatch = null;
+            $bestScore = 0.0;
+            foreach ($candidates as $candidate) {
+                $candidateWords = $this->coreWords($candidate['name'], $candidate['brand']);
+                $score = $this->wordOverlapScore($apiWords, $candidateWords);
+                if ($score > $bestScore) {
+                    $bestScore = $score;
+                    $bestMatch = $candidate;
+                }
+            }
+
+            if (!$bestMatch || $bestScore < $threshold) {
+                continue;
+            }
+
+            $this->repo->updateOlfactiveData((int)$bestMatch['id'], $normalized);
+            $tags = $this->generateTagsFromNotes($normalized);
+            if (!empty($tags)) {
+                $this->repo->setTags((int)$bestMatch['id'], $tags);
+            }
+            $matched++;
+        }
+
+        return $matched;
+    }
+
+    /**
+     * @param list<array> $items
+     */
+    private function appendToLocalCache(array $items): void
+    {
+        if ($items === []) {
+            return;
+        }
+        $path = dirname(__DIR__) . '/data/perfumapi-cache.json';
+        $dir = dirname($path);
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0755, true);
+        }
+
+        $existing = [];
+        if (is_file($path)) {
+            $decoded = json_decode((string)file_get_contents($path), true);
+            if (is_array($decoded)) {
+                $existing = $decoded;
+            }
+        }
+
+        $byUrl = [];
+        foreach ($existing as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $url = (string)($row['perfume_url'] ?? $row['source_url'] ?? $row['url'] ?? '');
+            $key = $url !== '' ? $url : md5(($row['name'] ?? '') . '|' . ($row['brand'] ?? ''));
+            $byUrl[$key] = $row;
+        }
+        foreach ($items as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $url = (string)($row['perfume_url'] ?? $row['source_url'] ?? $row['url'] ?? '');
+            $key = $url !== '' ? $url : md5(($row['name'] ?? '') . '|' . ($row['brand'] ?? ''));
+            $byUrl[$key] = $row;
+        }
+
+        file_put_contents(
+            $path,
+            json_encode(array_values($byUrl), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)
+        );
+    }
+
+    /**
      * Enrichit le catalogue existant (ex: importé depuis un CSV réel) avec les données olfactives
      * de PerfumAPI, SANS créer de nouveau parfum ni toucher à l'image/prix/lien produit réels.
      * La correspondance se fait par similarité de mots (les noms API et CSV n'ont pas le même
